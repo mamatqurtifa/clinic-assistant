@@ -95,8 +95,8 @@ async function createBookingEvent({ doctor, date, hour, patientEmail }) {
     reminders: {
       useDefault: false,
       overrides: [
-        { method: 'email', minutes: 60 },
-        { method: 'popup', minutes: 30 },
+        { method: 'email', minutes: 30 },
+        { method: 'popup', minutes: 15 },
       ],
     },
   };
