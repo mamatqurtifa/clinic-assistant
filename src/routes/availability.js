@@ -1,17 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const { listAvailableDoctors } = require('../services/calendarService');
-const { parseHour, CLINIC_OPEN_HOUR, CLINIC_CLOSE_HOUR } = require('../utils/time');
+const { parseHour, isValidDate, CLINIC_OPEN_HOUR, CLINIC_CLOSE_HOUR } = require('../utils/time');
 
-// GET /api/availability?date=2026-07-24&time=12:00
-router.get('/availability', async (req, res) => {
+// POST /api/availability
+// Body: { "date": "2026-07-24", "time": "12:00" }
+router.post('/availability', async (req, res) => {
   try {
-    const { date, time } = req.query;
+    const { date, time } = req.body || {};
 
     if (!date || !time) {
       return res.status(400).json({
-        error: 'Query parameter "date" dan "time" wajib diisi. Contoh: ?date=2026-07-24&time=12:00',
+        error: 'Field "date" dan "time" wajib diisi.',
       });
+    }
+
+    if (!isValidDate(date)) {
+      return res.status(400).json({ error: 'Format date harus YYYY-MM-DD, contoh: 2026-07-24.' });
     }
 
     const hour = parseHour(time);

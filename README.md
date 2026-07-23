@@ -82,10 +82,27 @@ Server jalan di `http://localhost:3000`.
 
 ## Cara Pakai API
 
+> Semua endpoint menggunakan **method POST** dengan body `Content-Type: application/json`.
+
+### Ringkasan Endpoint
+
+| Endpoint | Fungsi |
+|----------|--------|
+| `POST /api/availability` | Cek slot & dokter yang tersedia |
+| `POST /api/bookings` | Buat booking baru |
+| `POST /api/bookings/list` | Query daftar booking |
+| `POST /api/bookings/reschedule` | Reschedule booking |
+| `POST /api/bookings/cancel` | Batalkan booking |
+
+---
+
 ### Cek ketersediaan slot
 
 ```
-GET /api/availability?date=2026-07-24&time=12:00
+POST /api/availability
+Content-Type: application/json
+
+{ "date": "2026-07-24", "time": "12:00" }
 ```
 
 Response:
@@ -107,7 +124,7 @@ Response:
 
 ### Buat booking
 
-Pasien **memilih dokter sendiri** lewat `doctorId`. Gunakan `GET /api/availability` terlebih dahulu untuk cek dokter mana yang masih kosong di jam yang diinginkan.
+Pasien **memilih dokter sendiri** lewat `doctorId`. Gunakan `POST /api/availability` terlebih dahulu untuk cek dokter mana yang masih kosong.
 
 ```
 POST /api/bookings
@@ -121,11 +138,11 @@ Content-Type: application/json
 }
 ```
 
-| Field      | Tipe   | Keterangan                                     |
-|------------|--------|------------------------------------------------|
-| `date`     | string | Tanggal konsultasi (YYYY-MM-DD). Wajib.        |
-| `time`     | string | Jam konsultasi (misal `"12:00"`). Wajib.       |
-| `email`    | string | Email pasien untuk undangan & reminder. Wajib. |
+| Field      | Tipe   | Keterangan                                      |
+|------------|--------|-------------------------------------------------|
+| `date`     | string | Tanggal konsultasi (YYYY-MM-DD). Wajib.         |
+| `time`     | string | Jam konsultasi (misal `"12:00"`). Wajib.        |
+| `email`    | string | Email pasien untuk undangan & reminder. Wajib.  |
 | `doctorId` | string | ID dokter yang dipilih (misal `"dr-03"`). Wajib.|
 
 Response sukses (201):
@@ -150,40 +167,29 @@ Response jika dokter sudah penuh di jam itu (409):
 }
 ```
 
-Response jika doctorId tidak dikenal (400):
-```json
-{
-  "error": "Dokter dengan id \"dr-99\" tidak ditemukan.",
-  "availableDoctors": [
-    { "id": "dr-01", "name": "dr. Andi Pratama, M.Ked" }
-  ]
-}
-```
-
 ---
 
 ### Query daftar booking
 
-Semua query param bersifat **opsional**. Tanpa param → ambil semua booking ke depan (maks 100).
+Semua field opsional. Kirim `{}` untuk ambil semua booking ke depan (maks 100).
 
 ```
-GET /api/bookings
-GET /api/bookings?date=2026-07-24
-GET /api/bookings?date=2026-07-24&time=12:00
-GET /api/bookings?doctorId=dr-01
-GET /api/bookings?date=2026-07-24&doctorId=dr-01
+POST /api/bookings/list
+Content-Type: application/json
+
+{ "date": "2026-07-24", "time": "12:00", "doctorId": "dr-01" }
 ```
 
-| Query Param | Tipe   | Keterangan                                              |
-|-------------|--------|---------------------------------------------------------|
-| `date`      | string | Filter tanggal (YYYY-MM-DD). Opsional.                 |
-| `time`      | string | Filter slot jam (misal `12:00`). Butuh `date`.         |
-| `doctorId`  | string | Filter dokter tertentu (misal `dr-01`). Opsional.      |
+| Field      | Tipe   | Keterangan                                           |
+|------------|--------|------------------------------------------------------|
+| `date`     | string | Filter tanggal (YYYY-MM-DD). Opsional.               |
+| `time`     | string | Filter slot jam (misal `"12:00"`). Butuh `date`.     |
+| `doctorId` | string | Filter dokter tertentu (misal `"dr-01"`). Opsional.  |
 
 Response:
 ```json
 {
-  "total": 2,
+  "total": 1,
   "filters": { "date": "2026-07-24", "time": null, "doctorId": null },
   "bookings": [
     {
@@ -205,13 +211,14 @@ Response:
 
 ### Reschedule booking
 
-Ganti tanggal, jam, dan/atau dokter dari booking yang sudah ada. Minimal **satu field** harus diisi. Jika ganti jam, `date` dan `time` harus dikirim bersamaan.
+Ganti tanggal, jam, dan/atau dokter. `eventId` wajib. Minimal satu field perubahan harus diisi. `date` dan `time` harus dikirim bersamaan jika salah satu diisi.
 
 ```
-PATCH /api/bookings/:eventId
+POST /api/bookings/reschedule
 Content-Type: application/json
 
 {
+  "eventId": "abc123",
   "date": "2026-07-25",
   "time": "13:00",
   "doctorId": "dr-02"
@@ -220,9 +227,10 @@ Content-Type: application/json
 
 | Field      | Tipe   | Keterangan                                                     |
 |------------|--------|----------------------------------------------------------------|
-| `date`     | string | Tanggal baru (YYYY-MM-DD). Harus berpasangan dengan `time`.   |
-| `time`     | string | Jam baru. Harus berpasangan dengan `date`.                    |
-| `doctorId` | string | Dokter pengganti. Opsional, bisa diganti tanpa ganti jadwal.  |
+| `eventId`  | string | ID booking yang akan direschedule. **Wajib**.                  |
+| `date`     | string | Tanggal baru (YYYY-MM-DD). Harus berpasangan dengan `time`.    |
+| `time`     | string | Jam baru. Harus berpasangan dengan `date`.                     |
+| `doctorId` | string | Dokter pengganti. Opsional, bisa diganti tanpa ganti jadwal.   |
 
 Response sukses:
 ```json
@@ -237,25 +245,18 @@ Response sukses:
 }
 ```
 
-Response jika slot baru sudah penuh (409):
-```json
-{
-  "error": "dr. Siti Nurhaliza, M.Ked sudah penuh di jam tersebut. Silakan pilih jam atau dokter lain.",
-  "isFull": true
-}
-```
-
 ---
 
 ### Batalkan booking
 
-```
-DELETE /api/bookings/:eventId
-```
+Google Calendar otomatis **mengirim notifikasi pembatalan** ke email pasien.
 
-Ganti `:eventId` dengan nilai `eventId` yang didapat dari response POST `/api/bookings`.
+```
+POST /api/bookings/cancel
+Content-Type: application/json
 
-Google Calendar akan otomatis **mengirim email notifikasi pembatalan** ke pasien.
+{ "eventId": "abc123" }
+```
 
 Response sukses:
 ```json
@@ -265,7 +266,7 @@ Response sukses:
 }
 ```
 
-Response jika event tidak ditemukan (404):
+Response jika tidak ditemukan (404):
 ```json
 {
   "error": "Booking tidak ditemukan atau sudah dibatalkan."

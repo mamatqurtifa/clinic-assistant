@@ -16,10 +16,12 @@ const {
   CLINIC_CLOSE_HOUR,
 } = require('../utils/time');
 
-// GET /api/bookings
-router.get('/bookings', async (req, res) => {
+// POST /api/bookings/list
+// Query daftar booking dengan filter opsional.
+// Body (semua opsional): { "date": "2026-07-24", "time": "12:00", "doctorId": "dr-01" }
+router.post('/bookings/list', async (req, res) => {
   try {
-    const { date, time, doctorId } = req.query;
+    const { date, time, doctorId } = req.body || {};
 
     if (date && !isValidDate(date)) {
       return res.status(400).json({ error: 'Format date harus YYYY-MM-DD, contoh: 2026-07-24.' });
@@ -28,7 +30,7 @@ router.get('/bookings', async (req, res) => {
     let hour = null;
     if (time) {
       if (!date) {
-        return res.status(400).json({ error: 'Query param "date" wajib diisi jika menggunakan "time".' });
+        return res.status(400).json({ error: 'Field "date" wajib diisi jika menggunakan "time".' });
       }
       hour = parseHour(time);
       if (hour === null || hour < CLINIC_OPEN_HOUR || hour >= CLINIC_CLOSE_HOUR) {
@@ -56,6 +58,8 @@ router.get('/bookings', async (req, res) => {
 });
 
 // POST /api/bookings
+// Buat booking baru. Pasien memilih dokter sendiri.
+// Body: { "date": "2026-07-24", "time": "12:00", "email": "pasien@example.com", "doctorId": "dr-01" }
 router.post('/bookings', async (req, res) => {
   try {
     const { date, time, email, doctorId } = req.body;
@@ -113,20 +117,24 @@ router.post('/bookings', async (req, res) => {
   }
 });
 
-// PATCH /api/bookings/:eventId
-router.patch('/bookings/:eventId', async (req, res) => {
+// POST /api/bookings/reschedule
+// Reschedule booking. eventId wajib. Minimal satu field perubahan harus diisi.
+// Body: { "eventId": "abc123", "date": "2026-07-25", "time": "13:00", "doctorId": "dr-02" }
+// Catatan: date dan time harus berpasangan jika salah satu diisi.
+router.post('/bookings/reschedule', async (req, res) => {
   try {
-    const { eventId } = req.params;
-    const { date, time, doctorId } = req.body || {};
+    const { eventId, date, time, doctorId } = req.body || {};
 
-    // Minimal satu field harus diisi
+    if (!eventId) {
+      return res.status(400).json({ error: 'Field "eventId" wajib diisi.' });
+    }
+
     if (!date && !time && !doctorId) {
       return res.status(400).json({
         error: 'Minimal satu field harus diisi: date, time, atau doctorId.',
       });
     }
 
-    // date dan time harus berpasangan jika salah satu diisi
     if ((date && !time) || (!date && time)) {
       return res.status(400).json({ error: 'Field "date" dan "time" harus diisi bersamaan.' });
     }
@@ -157,18 +165,13 @@ router.patch('/bookings/:eventId', async (req, res) => {
     }
 
     // Cek ketersediaan dokter di slot baru (exclude event ini sendiri)
-    if (date && hour !== undefined) {
-      const targetDoctorId = doctorId || null;
-      // Jika doctorId tidak diganti, kita perlu tahu dokter saat ini dari event
-      // Gunakan isDoctorAvailable hanya jika doctorId diketahui
-      if (targetDoctorId) {
-        const available = await isDoctorAvailable(date, hour, targetDoctorId, eventId);
-        if (!available) {
-          return res.status(409).json({
-            error: `${doctor.name} sudah penuh di jam tersebut. Silakan pilih jam atau dokter lain.`,
-            isFull: true,
-          });
-        }
+    if (date && hour !== undefined && doctorId) {
+      const available = await isDoctorAvailable(date, hour, doctorId, eventId);
+      if (!available) {
+        return res.status(409).json({
+          error: `${doctor.name} sudah penuh di jam tersebut. Silakan pilih jam atau dokter lain.`,
+          isFull: true,
+        });
       }
     }
 
@@ -192,20 +195,22 @@ router.patch('/bookings/:eventId', async (req, res) => {
   }
 });
 
-// DELETE /api/bookings/:eventId
-router.delete('/bookings/:eventId', async (req, res) => {
+// POST /api/bookings/cancel
+// Batalkan booking. Google Calendar kirim notifikasi pembatalan ke semua attendee.
+// Body: { "eventId": "abc123" }
+router.post('/bookings/cancel', async (req, res) => {
   try {
-    const { eventId } = req.params;
+    const { eventId } = req.body || {};
 
-    if (!eventId || eventId.trim() === '') {
-      return res.status(400).json({ error: 'eventId wajib disertakan di URL.' });
+    if (!eventId) {
+      return res.status(400).json({ error: 'Field "eventId" wajib diisi.' });
     }
 
-    await cancelBooking(eventId.trim());
+    await cancelBooking(eventId);
 
     return res.json({
       message: 'Booking berhasil dibatalkan. Notifikasi pembatalan dikirim ke pasien.',
-      eventId: eventId.trim(),
+      eventId,
     });
   } catch (err) {
     if (err?.code === 404 || err?.code === 410 || err?.status === 404 || err?.status === 410) {
