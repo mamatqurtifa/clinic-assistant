@@ -29,7 +29,7 @@ router.get('/availability', async (req, res) => {
       time: `${String(hour).padStart(2, '0')}:00`,
       isFull: availableDoctors.length === 0,
       availableSlots: availableDoctors.length,
-      availableDoctors: availableDoctors.map((d) => d.name),
+      availableDoctors: availableDoctors.map((d) => ({ id: d.id, name: d.name })),
     });
   } catch (err) {
     console.error('Gagal cek ketersediaan:', err);

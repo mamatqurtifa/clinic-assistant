@@ -95,7 +95,11 @@ Response:
   "time": "12:00",
   "isFull": false,
   "availableSlots": 3,
-  "availableDoctors": ["dr. Budi Santoso", "dr. Rina Wijaya", "dr. Hendra Kusuma"]
+  "availableDoctors": [
+    { "id": "dr-03", "name": "dr. Budi Santoso, M.Ked" },
+    { "id": "dr-04", "name": "dr. Rina Wijaya, M.Ked" },
+    { "id": "dr-05", "name": "dr. Hendra Kusuma, M.Ked" }
+  ]
 }
 ```
 
