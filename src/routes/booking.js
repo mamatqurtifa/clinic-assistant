@@ -53,7 +53,10 @@ router.post('/bookings/list', async (req, res) => {
     });
   } catch (err) {
     console.error('Gagal mengambil daftar booking:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
+    return res.status(500).json({
+      error: 'Terjadi kesalahan pada server.',
+      ...(process.env.NODE_ENV !== 'production' && { detail: err.message }),
+    });
   }
 });
 
@@ -113,7 +116,10 @@ router.post('/bookings', async (req, res) => {
     });
   } catch (err) {
     console.error('Gagal membuat booking:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
+    return res.status(500).json({
+      error: 'Terjadi kesalahan pada server.',
+      ...(process.env.NODE_ENV !== 'production' && { detail: err.message }),
+    });
   }
 });
 
@@ -191,7 +197,10 @@ router.post('/bookings/reschedule', async (req, res) => {
       return res.status(404).json({ error: 'Booking tidak ditemukan atau sudah dibatalkan.' });
     }
     console.error('Gagal mereschedule booking:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
+    return res.status(500).json({
+      error: 'Terjadi kesalahan pada server.',
+      ...(process.env.NODE_ENV !== 'production' && { detail: err.message }),
+    });
   }
 });
 
@@ -217,7 +226,10 @@ router.post('/bookings/cancel', async (req, res) => {
       return res.status(404).json({ error: 'Booking tidak ditemukan atau sudah dibatalkan.' });
     }
     console.error('Gagal membatalkan booking:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
+    return res.status(500).json({
+      error: 'Terjadi kesalahan pada server.',
+      ...(process.env.NODE_ENV !== 'production' && { detail: err.message }),
+    });
   }
 });
 

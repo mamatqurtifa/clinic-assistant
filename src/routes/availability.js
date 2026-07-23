@@ -38,7 +38,10 @@ router.post('/availability', async (req, res) => {
     });
   } catch (err) {
     console.error('Gagal cek ketersediaan:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
+    return res.status(500).json({
+      error: 'Terjadi kesalahan pada server.',
+      ...(process.env.NODE_ENV !== 'production' && { detail: err.message }),
+    });
   }
 });
 
