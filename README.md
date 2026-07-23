@@ -5,7 +5,8 @@ Backend Express.js sederhana yang jadi **proxy** ke Google Calendar API. Project
 ## Fitur
 
 - Cek ketersediaan slot dokter per jam (`GET /api/availability`)
-- Buat booking konsultasi: auto-assign dokter kosong, generate Google Meet link, kirim invite + reminder ke email pasien (`POST /api/bookings`)
+- Buat booking konsultasi: **pasien memilih dokter sendiri**, generate Google Meet link, kirim invite + reminder ke email pasien (`POST /api/bookings`)
+- **Reschedule booking**: ganti tanggal, jam, dan/atau dokter (`PATCH /api/bookings/:eventId`)
 - **Query booking** dengan filter fleksibel: tanggal, jam, dan/atau dokter tertentu (`GET /api/bookings`)
 - **Batalkan booking** dan kirim notifikasi pembatalan otomatis ke pasien (`DELETE /api/bookings/:eventId`)
 - Data 5 dokter umum masih hardcode di `src/config/doctors.js`
@@ -25,7 +26,7 @@ clinic-calendar-proxy/
 │   │   └── calendarService.js  # Semua logic ke Google Calendar API
 │   ├── routes/
 │   │   ├── availability.js     # GET /api/availability
-│   │   └── booking.js          # GET /api/bookings, POST /api/bookings, DELETE /api/bookings/:eventId
+│   │   └── booking.js          # GET /api/bookings, POST /api/bookings, PATCH /api/bookings/:eventId, DELETE /api/bookings/:eventId
 │   ├── utils/
 │   │   └── time.js             # Helper parsing jam & validasi
 │   ├── app.js                  # Setup Express app
@@ -102,6 +103,8 @@ Response:
 
 ### Buat booking
 
+Pasien **memilih dokter sendiri** lewat `doctorId`. Gunakan `GET /api/availability` terlebih dahulu untuk cek dokter mana yang masih kosong di jam yang diinginkan.
+
 ```
 POST /api/bookings
 Content-Type: application/json
@@ -109,28 +112,47 @@ Content-Type: application/json
 {
   "date": "2026-07-24",
   "time": "12:00",
-  "email": "pasien@example.com"
+  "email": "pasien@example.com",
+  "doctorId": "dr-03"
 }
 ```
+
+| Field      | Tipe   | Keterangan                                     |
+|------------|--------|------------------------------------------------|
+| `date`     | string | Tanggal konsultasi (YYYY-MM-DD). Wajib.        |
+| `time`     | string | Jam konsultasi (misal `"12:00"`). Wajib.       |
+| `email`    | string | Email pasien untuk undangan & reminder. Wajib. |
+| `doctorId` | string | ID dokter yang dipilih (misal `"dr-03"`). Wajib.|
 
 Response sukses (201):
 ```json
 {
   "message": "Booking berhasil dibuat.",
-  "doctor": "dr. Budi Santoso",
+  "eventId": "abc123",
+  "doctor": { "id": "dr-03", "name": "dr. Budi Santoso, M.Ked" },
   "date": "2026-07-24",
   "time": "12:00",
   "meetLink": "https://meet.google.com/xxx-yyyy-zzz",
-  "eventId": "abc123",
   "eventLink": "https://calendar.google.com/event?eid=..."
 }
 ```
 
-Response kalau jam penuh (409):
+Response jika dokter sudah penuh di jam itu (409):
 ```json
 {
-  "error": "Semua dokter sudah penuh di jam tersebut. Silakan pilih jam lain.",
+  "error": "dr. Budi Santoso, M.Ked sudah penuh di jam tersebut. Silakan pilih jam atau dokter lain.",
+  "doctorId": "dr-03",
   "isFull": true
+}
+```
+
+Response jika doctorId tidak dikenal (400):
+```json
+{
+  "error": "Dokter dengan id \"dr-99\" tidak ditemukan.",
+  "availableDoctors": [
+    { "id": "dr-01", "name": "dr. Andi Pratama, M.Ked" }
+  ]
 }
 ```
 
@@ -177,6 +199,50 @@ Response:
 
 ---
 
+### Reschedule booking
+
+Ganti tanggal, jam, dan/atau dokter dari booking yang sudah ada. Minimal **satu field** harus diisi. Jika ganti jam, `date` dan `time` harus dikirim bersamaan.
+
+```
+PATCH /api/bookings/:eventId
+Content-Type: application/json
+
+{
+  "date": "2026-07-25",
+  "time": "13:00",
+  "doctorId": "dr-02"
+}
+```
+
+| Field      | Tipe   | Keterangan                                                     |
+|------------|--------|----------------------------------------------------------------|
+| `date`     | string | Tanggal baru (YYYY-MM-DD). Harus berpasangan dengan `time`.   |
+| `time`     | string | Jam baru. Harus berpasangan dengan `date`.                    |
+| `doctorId` | string | Dokter pengganti. Opsional, bisa diganti tanpa ganti jadwal.  |
+
+Response sukses:
+```json
+{
+  "message": "Booking berhasil direschedule.",
+  "eventId": "abc123",
+  "doctor": { "id": "dr-02", "name": "dr. Siti Nurhaliza, M.Ked" },
+  "date": "2026-07-25",
+  "time": "13:00",
+  "meetLink": "https://meet.google.com/xxx-yyyy-zzz",
+  "eventLink": "https://calendar.google.com/event?eid=..."
+}
+```
+
+Response jika slot baru sudah penuh (409):
+```json
+{
+  "error": "dr. Siti Nurhaliza, M.Ked sudah penuh di jam tersebut. Silakan pilih jam atau dokter lain.",
+  "isFull": true
+}
+```
+
+---
+
 ### Batalkan booking
 
 ```
@@ -209,7 +275,8 @@ Response jika event tidak ditemukan (404):
 - Jam praktik: **10.00 - 14.00**
 - 5 dokter umum, masing-masing hanya bisa menerima **1 pasien per jam**
 - Kapasitas maksimum: 5 dokter × 4 slot jam = **20 pasien per hari**
-- Assignment dokter otomatis (bukan pasien yang pilih dokter)
+- Pasien **memilih dokter sendiri** saat booking (tidak auto-assign)
+- Reschedule menggunakan `PATCH` — hanya field yang dikirim yang diubah
 
 ## Daftar Dokter & ID
 

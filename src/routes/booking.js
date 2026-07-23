@@ -1,11 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const {
-  findAvailableDoctor,
   createBookingEvent,
+  rescheduleBooking,
   getBookings,
   cancelBooking,
+  isDoctorAvailable,
 } = require('../services/calendarService');
+const doctors = require('../config/doctors');
 const {
   parseHour,
   isValidEmail,
@@ -19,12 +21,10 @@ router.get('/bookings', async (req, res) => {
   try {
     const { date, time, doctorId } = req.query;
 
-    // Validasi date jika diisi
     if (date && !isValidDate(date)) {
       return res.status(400).json({ error: 'Format date harus YYYY-MM-DD, contoh: 2026-07-24.' });
     }
 
-    // Validasi time jika diisi (time butuh date)
     let hour = null;
     if (time) {
       if (!date) {
@@ -58,10 +58,10 @@ router.get('/bookings', async (req, res) => {
 // POST /api/bookings
 router.post('/bookings', async (req, res) => {
   try {
-    const { date, time, email } = req.body;
+    const { date, time, email, doctorId } = req.body;
 
-    if (!date || !time || !email) {
-      return res.status(400).json({ error: 'Field date, time, dan email wajib diisi.' });
+    if (!date || !time || !email || !doctorId) {
+      return res.status(400).json({ error: 'Field date, time, email, dan doctorId wajib diisi.' });
     }
 
     if (!isValidDate(date)) {
@@ -73,41 +73,121 @@ router.post('/bookings', async (req, res) => {
     }
 
     const hour = parseHour(time);
-
     if (hour === null || hour < CLINIC_OPEN_HOUR || hour >= CLINIC_CLOSE_HOUR) {
       return res.status(400).json({
         error: `Jam praktik hanya tersedia antara ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
       });
     }
 
-    // Cari dokter yang masih kosong di jam tsb (max 5 dokter, 1 pasien/jam/dokter)
-    const doctor = await findAvailableDoctor(date, hour);
-
+    const doctor = doctors.find((d) => d.id === doctorId);
     if (!doctor) {
+      return res.status(400).json({
+        error: `Dokter dengan id "${doctorId}" tidak ditemukan.`,
+        availableDoctors: doctors.map((d) => ({ id: d.id, name: d.name })),
+      });
+    }
+
+    const available = await isDoctorAvailable(date, hour, doctorId);
+    if (!available) {
       return res.status(409).json({
-        error: 'Semua dokter sudah penuh di jam tersebut. Silakan pilih jam lain.',
+        error: `${doctor.name} sudah penuh di jam tersebut. Silakan pilih jam atau dokter lain.`,
+        doctorId,
         isFull: true,
       });
     }
 
-    const event = await createBookingEvent({
-      doctor,
-      date,
-      hour,
-      patientEmail: email,
-    });
+    const event = await createBookingEvent({ doctor, date, hour, patientEmail: email });
 
     return res.status(201).json({
       message: 'Booking berhasil dibuat.',
-      doctor: doctor.name,
+      eventId: event.id,
+      doctor: { id: doctor.id, name: doctor.name },
       date,
       time: `${String(hour).padStart(2, '0')}:00`,
       meetLink: event.hangoutLink || null,
-      eventId: event.id,
       eventLink: event.htmlLink,
     });
   } catch (err) {
     console.error('Gagal membuat booking:', err);
+    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
+  }
+});
+
+// PATCH /api/bookings/:eventId
+router.patch('/bookings/:eventId', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { date, time, doctorId } = req.body || {};
+
+    // Minimal satu field harus diisi
+    if (!date && !time && !doctorId) {
+      return res.status(400).json({
+        error: 'Minimal satu field harus diisi: date, time, atau doctorId.',
+      });
+    }
+
+    // date dan time harus berpasangan jika salah satu diisi
+    if ((date && !time) || (!date && time)) {
+      return res.status(400).json({ error: 'Field "date" dan "time" harus diisi bersamaan.' });
+    }
+
+    if (date && !isValidDate(date)) {
+      return res.status(400).json({ error: 'Format date harus YYYY-MM-DD, contoh: 2026-07-24.' });
+    }
+
+    let hour;
+    if (time) {
+      hour = parseHour(time);
+      if (hour === null || hour < CLINIC_OPEN_HOUR || hour >= CLINIC_CLOSE_HOUR) {
+        return res.status(400).json({
+          error: `Jam praktik hanya tersedia antara ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
+        });
+      }
+    }
+
+    let doctor;
+    if (doctorId) {
+      doctor = doctors.find((d) => d.id === doctorId);
+      if (!doctor) {
+        return res.status(400).json({
+          error: `Dokter dengan id "${doctorId}" tidak ditemukan.`,
+          availableDoctors: doctors.map((d) => ({ id: d.id, name: d.name })),
+        });
+      }
+    }
+
+    // Cek ketersediaan dokter di slot baru (exclude event ini sendiri)
+    if (date && hour !== undefined) {
+      const targetDoctorId = doctorId || null;
+      // Jika doctorId tidak diganti, kita perlu tahu dokter saat ini dari event
+      // Gunakan isDoctorAvailable hanya jika doctorId diketahui
+      if (targetDoctorId) {
+        const available = await isDoctorAvailable(date, hour, targetDoctorId, eventId);
+        if (!available) {
+          return res.status(409).json({
+            error: `${doctor.name} sudah penuh di jam tersebut. Silakan pilih jam atau dokter lain.`,
+            isFull: true,
+          });
+        }
+      }
+    }
+
+    const event = await rescheduleBooking(eventId, { date, hour, doctor });
+
+    return res.json({
+      message: 'Booking berhasil direschedule.',
+      eventId: event.id,
+      doctor: doctor ? { id: doctor.id, name: doctor.name } : undefined,
+      date: date || undefined,
+      time: hour !== undefined ? `${String(hour).padStart(2, '0')}:00` : undefined,
+      meetLink: event.hangoutLink || null,
+      eventLink: event.htmlLink || null,
+    });
+  } catch (err) {
+    if (err?.code === 404 || err?.code === 410 || err?.status === 404 || err?.status === 410) {
+      return res.status(404).json({ error: 'Booking tidak ditemukan atau sudah dibatalkan.' });
+    }
+    console.error('Gagal mereschedule booking:', err);
     return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
   }
 });
@@ -128,7 +208,6 @@ router.delete('/bookings/:eventId', async (req, res) => {
       eventId: eventId.trim(),
     });
   } catch (err) {
-    // Google Calendar mengembalikan 404 / 410 jika event tidak ditemukan
     if (err?.code === 404 || err?.code === 410 || err?.status === 404 || err?.status === 410) {
       return res.status(404).json({ error: 'Booking tidak ditemukan atau sudah dibatalkan.' });
     }

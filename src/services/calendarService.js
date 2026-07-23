@@ -15,12 +15,12 @@ function pad2(num) {
   return String(num).padStart(2, '0');
 }
 
-// Contoh: toRFC3339('2026-07-24', 12) -> "2026-07-24T12:00:00+07:00"
+// toRFC3339('2026-07-24', 12) -> "2026-07-24T12:00:00+07:00"
 function toRFC3339(date, hour) {
   return `${date}T${pad2(hour)}:00:00${TZ_OFFSET}`;
 }
 
-// Ambil semua event yang sudah ada di calendar pada slot jam tertentu (1 jam)
+// Ambil semua event di slot jam tertentu (1 jam)
 async function getEventsInSlot(date, hour) {
   const calendar = getCalendarClient();
 
@@ -35,8 +35,7 @@ async function getEventsInSlot(date, hour) {
   return res.data.items || [];
 }
 
-// Cari nama-nama dokter yang sudah terisi di slot jam tsb,
-// berdasarkan kemunculan nama dokter di title (summary) event.
+// Cari nama-nama dokter yang sudah terisi di slot jam tsb
 async function getBookedDoctorNames(date, hour) {
   const events = await getEventsInSlot(date, hour);
   const titles = events.map((e) => e.summary || '');
@@ -56,6 +55,24 @@ async function findAvailableDoctor(date, hour) {
 async function listAvailableDoctors(date, hour) {
   const bookedNames = await getBookedDoctorNames(date, hour);
   return doctors.filter((doc) => !bookedNames.includes(doc.name));
+}
+
+// Cek apakah dokter tertentu masih available di slot jam tsb.
+async function isDoctorAvailable(date, hour, doctorId, excludeEventId = null) {
+  const calendar = getCalendarClient();
+
+  const res = await calendar.events.list({
+    calendarId: CALENDAR_ID,
+    timeMin: toRFC3339(date, hour),
+    timeMax: toRFC3339(date, hour + 1),
+    singleEvents: true,
+  });
+
+  const events = (res.data.items || []).filter((e) => e.id !== excludeEventId);
+  const doctor = doctors.find((d) => d.id === doctorId);
+  if (!doctor) return false;
+
+  return !events.some((e) => (e.summary || '').includes(doctor.name));
 }
 
 // Buat event booking baru
@@ -94,6 +111,32 @@ async function createBookingEvent({ doctor, date, hour, patientEmail }) {
   return res.data;
 }
 
+// Reschedule booking yang sudah ada.
+async function rescheduleBooking(eventId, { date, hour, doctor }) {
+  const calendar = getCalendarClient();
+
+  const patch = {};
+
+  if (date !== undefined && hour !== undefined) {
+    patch.start = { dateTime: toRFC3339(date, hour), timeZone: TIMEZONE };
+    patch.end = { dateTime: toRFC3339(date, hour + 1), timeZone: TIMEZONE };
+  }
+
+  if (doctor) {
+    patch.summary = `Konsultasi dengan ${doctor.name}`;
+    patch.description = `Konsultasi online dengan ${doctor.name} melalui Google Meet.`;
+  }
+
+  const res = await calendar.events.patch({
+    calendarId: CALENDAR_ID,
+    eventId,
+    requestBody: patch,
+    sendUpdates: 'all',
+  });
+
+  return res.data;
+}
+
 async function getBookings({ date, hour, doctorId } = {}) {
   const calendar = getCalendarClient();
 
@@ -117,7 +160,6 @@ async function getBookings({ date, hour, doctorId } = {}) {
   const res = await calendar.events.list(params);
   const events = res.data.items || [];
 
-  // Normalize setiap event menjadi format ringkas
   let result = events.map((e) => {
     const startDT = e.start?.dateTime || '';
     const eventDate = startDT.slice(0, 10);
@@ -138,7 +180,6 @@ async function getBookings({ date, hour, doctorId } = {}) {
     };
   });
 
-  // Filter berdasarkan doctorId
   if (doctorId) {
     const targetDoc = doctors.find((d) => d.id === doctorId);
     if (targetDoc) {
@@ -168,7 +209,9 @@ module.exports = {
   getBookedDoctorNames,
   findAvailableDoctor,
   listAvailableDoctors,
+  isDoctorAvailable,
   createBookingEvent,
+  rescheduleBooking,
   getBookings,
   cancelBooking,
 };
