@@ -47,8 +47,6 @@ async function getBookedDoctorNames(date, hour) {
 }
 
 // Cari 1 dokter pertama yang masih kosong di slot jam tsb.
-// Return null kalau semua dokter (5) sudah penuh di jam itu.
-
 async function findAvailableDoctor(date, hour) {
   const bookedNames = await getBookedDoctorNames(date, hour);
   return doctors.find((doc) => !bookedNames.includes(doc.name)) || null;
@@ -60,9 +58,7 @@ async function listAvailableDoctors(date, hour) {
   return doctors.filter((doc) => !bookedNames.includes(doc.name));
 }
 
-// Buat event booking baru, Google Meet link otomatis, reminder,
-// dan invite (attendee) ke email pasien supaya dapat notifikasi.
-
+// Buat event booking baru
 async function createBookingEvent({ doctor, date, hour, patientEmail }) {
   const calendar = getCalendarClient();
   const requestId = `clinic-${doctor.id}-${date}-${hour}-${Date.now()}`;
@@ -98,10 +94,81 @@ async function createBookingEvent({ doctor, date, hour, patientEmail }) {
   return res.data;
 }
 
+async function getBookings({ date, hour, doctorId } = {}) {
+  const calendar = getCalendarClient();
+
+  const params = {
+    calendarId: CALENDAR_ID,
+    singleEvents: true,
+    orderBy: 'startTime',
+  };
+
+  if (date && hour !== undefined && hour !== null) {
+    params.timeMin = toRFC3339(date, hour);
+    params.timeMax = toRFC3339(date, hour + 1);
+  } else if (date) {
+    params.timeMin = `${date}T00:00:00${TZ_OFFSET}`;
+    params.timeMax = `${date}T23:59:59${TZ_OFFSET}`;
+  } else {
+    params.timeMin = new Date().toISOString();
+    params.maxResults = 100;
+  }
+
+  const res = await calendar.events.list(params);
+  const events = res.data.items || [];
+
+  // Normalize setiap event menjadi format ringkas
+  let result = events.map((e) => {
+    const startDT = e.start?.dateTime || '';
+    const eventDate = startDT.slice(0, 10);
+    const eventHour = startDT ? new Date(startDT).getHours() : null;
+
+    const matchedDoctor = doctors.find((doc) => (e.summary || '').includes(doc.name)) || null;
+
+    return {
+      eventId: e.id,
+      summary: e.summary || '',
+      date: eventDate,
+      time: eventHour !== null ? `${String(eventHour).padStart(2, '0')}:00` : null,
+      doctor: matchedDoctor ? { id: matchedDoctor.id, name: matchedDoctor.name } : null,
+      patientEmail: (e.attendees || []).map((a) => a.email),
+      meetLink: e.hangoutLink || null,
+      eventLink: e.htmlLink || null,
+      status: e.status || 'confirmed',
+    };
+  });
+
+  // Filter berdasarkan doctorId
+  if (doctorId) {
+    const targetDoc = doctors.find((d) => d.id === doctorId);
+    if (targetDoc) {
+      result = result.filter((ev) => ev.doctor?.id === doctorId);
+    } else {
+      result = [];
+    }
+  }
+
+  return result;
+}
+
+async function cancelBooking(eventId) {
+  const calendar = getCalendarClient();
+
+  await calendar.events.delete({
+    calendarId: CALENDAR_ID,
+    eventId,
+    sendUpdates: 'all',
+  });
+
+  return { success: true, eventId };
+}
+
 module.exports = {
   getEventsInSlot,
   getBookedDoctorNames,
   findAvailableDoctor,
   listAvailableDoctors,
   createBookingEvent,
+  getBookings,
+  cancelBooking,
 };

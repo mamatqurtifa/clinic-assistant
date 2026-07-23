@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { findAvailableDoctor, createBookingEvent } = require('../services/calendarService');
+const {
+  findAvailableDoctor,
+  createBookingEvent,
+  getBookings,
+  cancelBooking,
+} = require('../services/calendarService');
 const {
   parseHour,
   isValidEmail,
@@ -9,8 +14,48 @@ const {
   CLINIC_CLOSE_HOUR,
 } = require('../utils/time');
 
+// GET /api/bookings
+router.get('/bookings', async (req, res) => {
+  try {
+    const { date, time, doctorId } = req.query;
+
+    // Validasi date jika diisi
+    if (date && !isValidDate(date)) {
+      return res.status(400).json({ error: 'Format date harus YYYY-MM-DD, contoh: 2026-07-24.' });
+    }
+
+    // Validasi time jika diisi (time butuh date)
+    let hour = null;
+    if (time) {
+      if (!date) {
+        return res.status(400).json({ error: 'Query param "date" wajib diisi jika menggunakan "time".' });
+      }
+      hour = parseHour(time);
+      if (hour === null || hour < CLINIC_OPEN_HOUR || hour >= CLINIC_CLOSE_HOUR) {
+        return res.status(400).json({
+          error: `Jam praktik hanya tersedia antara ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
+        });
+      }
+    }
+
+    const bookings = await getBookings({ date, hour, doctorId });
+
+    return res.json({
+      total: bookings.length,
+      filters: {
+        date: date || null,
+        time: hour !== null ? `${String(hour).padStart(2, '0')}:00` : null,
+        doctorId: doctorId || null,
+      },
+      bookings,
+    });
+  } catch (err) {
+    console.error('Gagal mengambil daftar booking:', err);
+    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
+  }
+});
+
 // POST /api/bookings
-// body: { "date": "2026-07-24", "time": "12:00", "email": "pasien@example.com" }
 router.post('/bookings', async (req, res) => {
   try {
     const { date, time, email } = req.body;
@@ -63,6 +108,31 @@ router.post('/bookings', async (req, res) => {
     });
   } catch (err) {
     console.error('Gagal membuat booking:', err);
+    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
+  }
+});
+
+// DELETE /api/bookings/:eventId
+router.delete('/bookings/:eventId', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+
+    if (!eventId || eventId.trim() === '') {
+      return res.status(400).json({ error: 'eventId wajib disertakan di URL.' });
+    }
+
+    await cancelBooking(eventId.trim());
+
+    return res.json({
+      message: 'Booking berhasil dibatalkan. Notifikasi pembatalan dikirim ke pasien.',
+      eventId: eventId.trim(),
+    });
+  } catch (err) {
+    // Google Calendar mengembalikan 404 / 410 jika event tidak ditemukan
+    if (err?.code === 404 || err?.code === 410 || err?.status === 404 || err?.status === 410) {
+      return res.status(404).json({ error: 'Booking tidak ditemukan atau sudah dibatalkan.' });
+    }
+    console.error('Gagal membatalkan booking:', err);
     return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
   }
 });
