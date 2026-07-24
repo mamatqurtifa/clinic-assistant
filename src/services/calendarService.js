@@ -137,7 +137,7 @@ async function rescheduleBooking(eventId, { date, hour, doctor }) {
   return res.data;
 }
 
-async function getBookings({ date, hour, doctorId } = {}) {
+async function getBookings({ date, hour, doctorId, email } = {}) {
   const calendar = getCalendarClient();
 
   const params = {
@@ -187,6 +187,10 @@ async function getBookings({ date, hour, doctorId } = {}) {
     } else {
       result = [];
     }
+  }
+
+  if (email) {
+    result = result.filter((ev) => ev.patientEmail.includes(email));
   }
 
   return result;

@@ -177,7 +177,7 @@ Semua field opsional. Kirim `{}` untuk ambil semua booking ke depan (maks 100).
 POST /api/bookings/list
 Content-Type: application/json
 
-{ "date": "2026-07-24", "time": "12:00", "doctorId": "dr-01" }
+{ "date": "2026-07-24", "time": "12:00", "doctorId": "dr-01", "email": "pasien@example.com" }
 ```
 
 | Field      | Tipe   | Keterangan                                           |
@@ -185,12 +185,13 @@ Content-Type: application/json
 | `date`     | string | Filter tanggal (YYYY-MM-DD). Opsional.               |
 | `time`     | string | Filter slot jam (misal `"12:00"`). Butuh `date`.     |
 | `doctorId` | string | Filter dokter tertentu (misal `"dr-01"`). Opsional.  |
+| `email`    | string | Filter berdasarkan email pasien. Opsional.           |
 
 Response:
 ```json
 {
   "total": 1,
-  "filters": { "date": "2026-07-24", "time": null, "doctorId": null },
+  "filters": { "date": "2026-07-24", "time": null, "doctorId": null, "email": "pasien@example.com" },
   "bookings": [
     {
       "eventId": "abc123",
@@ -250,12 +251,26 @@ Response sukses:
 ### Batalkan booking
 
 Google Calendar otomatis **mengirim notifikasi pembatalan** ke email pasien.
+Pembatalan bisa dilakukan dengan menggunakan `eventId` **ATAU** menggunakan kombinasi `email`, `date`, dan `time`.
 
+**Menggunakan `eventId`:**
 ```
 POST /api/bookings/cancel
 Content-Type: application/json
 
 { "eventId": "abc123" }
+```
+
+**Menggunakan email dan jadwal:**
+```
+POST /api/bookings/cancel
+Content-Type: application/json
+
+{ 
+  "email": "pasien@example.com",
+  "date": "2026-07-24",
+  "time": "12:00"
+}
 ```
 
 Response sukses:

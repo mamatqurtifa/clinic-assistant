@@ -18,13 +18,17 @@ const {
 
 // POST /api/bookings/list
 // Query daftar booking dengan filter opsional.
-// Body (semua opsional): { "date": "2026-07-24", "time": "12:00", "doctorId": "dr-01" }
+// Body (semua opsional): { "date": "2026-07-24", "time": "12:00", "doctorId": "dr-01", "email": "pasien@example.com" }
 router.post('/bookings/list', async (req, res) => {
   try {
-    const { date, time, doctorId } = req.body || {};
+    const { date, time, doctorId, email } = req.body || {};
 
     if (date && !isValidDate(date)) {
       return res.status(400).json({ error: 'Format date harus YYYY-MM-DD, contoh: 2026-07-24.' });
+    }
+
+    if (email && !isValidEmail(email)) {
+      return res.status(400).json({ error: 'Format email tidak valid.' });
     }
 
     let hour = null;
@@ -40,7 +44,7 @@ router.post('/bookings/list', async (req, res) => {
       }
     }
 
-    const bookings = await getBookings({ date, hour, doctorId });
+    const bookings = await getBookings({ date, hour, doctorId, email });
 
     return res.json({
       total: bookings.length,
@@ -48,6 +52,7 @@ router.post('/bookings/list', async (req, res) => {
         date: date || null,
         time: hour !== null ? `${String(hour).padStart(2, '0')}:00` : null,
         doctorId: doctorId || null,
+        email: email || null,
       },
       bookings,
     });
@@ -206,20 +211,45 @@ router.post('/bookings/reschedule', async (req, res) => {
 
 // POST /api/bookings/cancel
 // Batalkan booking. Google Calendar kirim notifikasi pembatalan ke semua attendee.
-// Body: { "eventId": "abc123" }
+// Body: { "eventId": "abc123" } ATAU { "email": "pasien@example.com", "date": "2026-07-24", "time": "12:00" }
 router.post('/bookings/cancel', async (req, res) => {
   try {
-    const { eventId } = req.body || {};
+    const { eventId, email, date, time } = req.body || {};
 
-    if (!eventId) {
-      return res.status(400).json({ error: 'Field "eventId" wajib diisi.' });
+    let targetEventId = eventId;
+
+    if (!targetEventId) {
+      if (!email || !date || !time) {
+        return res.status(400).json({ error: 'Harap berikan eventId, atau kombinasi email, date, dan time untuk membatalkan booking.' });
+      }
+
+      if (!isValidDate(date)) {
+        return res.status(400).json({ error: 'Format date harus YYYY-MM-DD, contoh: 2026-07-24.' });
+      }
+
+      if (!isValidEmail(email)) {
+        return res.status(400).json({ error: 'Format email tidak valid.' });
+      }
+
+      const hour = parseHour(time);
+      if (hour === null) {
+        return res.status(400).json({ error: 'Format time tidak valid.' });
+      }
+
+      const bookings = await getBookings({ date, hour, email });
+      if (bookings.length === 0) {
+        return res.status(404).json({ error: 'Booking tidak ditemukan untuk jadwal dan email tersebut.' });
+      }
+
+      // Ambil booking pertama yang cocok
+      targetEventId = bookings[0].eventId;
     }
 
-    await cancelBooking(eventId);
+    await cancelBooking(targetEventId);
 
     return res.json({
       message: 'Booking berhasil dibatalkan. Notifikasi pembatalan dikirim ke pasien.',
-      eventId,
+      eventId: targetEventId,
     });
   } catch (err) {
     if (err?.code === 404 || err?.code === 410 || err?.status === 404 || err?.status === 410) {
