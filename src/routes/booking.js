@@ -23,25 +23,34 @@ router.post('/bookings/list', async (req, res) => {
   try {
     const { date, time, doctorId, email } = req.body || {};
 
-    if (date && !isValidDate(date)) {
+    // Helper function untuk membersihkan input template variabel dari Botika
+    const sanitizeInput = (val) => {
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (trimmed === '' || trimmed.toLowerCase() === 'null' || trimmed.toLowerCase() === 'undefined' || trimmed.startsWith('{{')) {
+          return null;
+        }
+        return trimmed;
+      }
+      return val;
+    };
+
+    const cleanDate = sanitizeInput(date);
+    const cleanTime = sanitizeInput(time);
+    const cleanEmail = sanitizeInput(email);
+    const cleanDoctorId = sanitizeInput(doctorId);
+
+    if (cleanDate && !isValidDate(cleanDate)) {
       return res.status(400).json({ error: 'Format date harus YYYY-MM-DD, contoh: 2026-07-24.' });
     }
 
-    if (email && !isValidEmail(email)) {
+    if (cleanEmail && !isValidEmail(cleanEmail)) {
       return res.status(400).json({ error: 'Format email tidak valid.' });
-    }
-
-    let cleanTime = time;
-    if (typeof cleanTime === 'string') {
-      cleanTime = cleanTime.trim();
-      if (cleanTime === '' || cleanTime.toLowerCase() === 'null' || cleanTime.toLowerCase() === 'undefined' || cleanTime.startsWith('{{')) {
-        cleanTime = null;
-      }
     }
 
     let hour = null;
     if (cleanTime) {
-      if (!date) {
+      if (!cleanDate) {
         return res.status(400).json({ error: 'Field "date" wajib diisi jika menggunakan "time".' });
       }
       hour = parseHour(cleanTime);
@@ -52,15 +61,15 @@ router.post('/bookings/list', async (req, res) => {
       }
     }
 
-    const bookings = await getBookings({ date, hour, doctorId, email });
+    const bookings = await getBookings({ date: cleanDate, hour, doctorId: cleanDoctorId, email: cleanEmail });
 
     return res.json({
       total: bookings.length,
       filters: {
-        date: date || null,
+        date: cleanDate || null,
         time: hour !== null ? `${String(hour).padStart(2, '0')}:00` : null,
-        doctorId: doctorId || null,
-        email: email || null,
+        doctorId: cleanDoctorId || null,
+        email: cleanEmail || null,
       },
       bookings,
     });
