@@ -31,12 +31,20 @@ router.post('/bookings/list', async (req, res) => {
       return res.status(400).json({ error: 'Format email tidak valid.' });
     }
 
+    let cleanTime = time;
+    if (typeof cleanTime === 'string') {
+      cleanTime = cleanTime.trim();
+      if (cleanTime === '' || cleanTime.toLowerCase() === 'null' || cleanTime.toLowerCase() === 'undefined' || cleanTime.startsWith('{{')) {
+        cleanTime = null;
+      }
+    }
+
     let hour = null;
-    if (time) {
+    if (cleanTime) {
       if (!date) {
         return res.status(400).json({ error: 'Field "date" wajib diisi jika menggunakan "time".' });
       }
-      hour = parseHour(time);
+      hour = parseHour(cleanTime);
       if (hour === null || hour < CLINIC_OPEN_HOUR || hour >= CLINIC_CLOSE_HOUR) {
         return res.status(400).json({
           error: `Jam praktik hanya tersedia antara ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
