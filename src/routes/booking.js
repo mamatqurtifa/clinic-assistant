@@ -55,8 +55,16 @@ router.post('/bookings/list', async (req, res) => {
       }
       hour = parseHour(cleanTime);
       if (hour === null || hour < CLINIC_OPEN_HOUR || hour >= CLINIC_CLOSE_HOUR) {
-        return res.status(400).json({
-          error: `Jam praktik hanya tersedia antara ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
+        return res.status(200).json({
+          message: `Jam praktik hanya tersedia antara ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
+          total: 0,
+          filters: {
+            date: cleanDate || null,
+            time: cleanTime,
+            doctorId: cleanDoctorId || null,
+            email: cleanEmail || null,
+          },
+          bookings: [],
         });
       }
     }
