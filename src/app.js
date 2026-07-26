@@ -3,6 +3,7 @@ const express = require('express');
 
 const availabilityRoute = require('./routes/availability');
 const bookingRoute = require('./routes/booking');
+const doctorsRoute = require('./routes/doctors');
 
 const app = express();
 
@@ -14,6 +15,7 @@ app.get('/', (req, res) => {
 
 app.use('/api', availabilityRoute);
 app.use('/api', bookingRoute);
+app.use('/api', doctorsRoute);
 
 // Handler untuk route yang tidak ditemukan
 app.use((req, res) => {

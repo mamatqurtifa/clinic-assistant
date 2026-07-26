@@ -5,6 +5,7 @@ Backend Express.js sederhana yang jadi **proxy** ke Google Calendar API. Project
 ## Fitur
 
 - Cek ketersediaan slot dokter per jam (`GET /api/availability`)
+- Menampilkan daftar seluruh dokter (`GET /api/doctors/list`)
 - Buat booking konsultasi: **pasien memilih dokter sendiri**, generate Google Meet link, kirim invite + reminder ke email pasien (`POST /api/bookings`)
 - **Reschedule booking**: ganti tanggal, jam, dan/atau dokter (`PATCH /api/bookings/:eventId`)
 - **Query booking** dengan filter fleksibel: tanggal, jam, dan/atau dokter tertentu (`GET /api/bookings`)
@@ -26,6 +27,7 @@ clinic-calendar-proxy/
 │   │   └── calendarService.js  # Semua logic ke Google Calendar API
 │   ├── routes/
 │   │   ├── availability.js     # GET /api/availability
+│   │   ├── doctors.js          # GET /api/doctors/list
 │   │   └── booking.js          # GET /api/bookings, POST /api/bookings, PATCH /api/bookings/:eventId, DELETE /api/bookings/:eventId
 │   ├── utils/
 │   │   └── time.js             # Helper parsing jam & validasi
