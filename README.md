@@ -427,15 +427,20 @@ Ini adalah langkah untuk mendapatkan `Client ID` dan `Client Secret` milik Anda:
 Kita akan menggunakan Google OAuth Playground untuk mengizinkan aplikasi membaca kalender klinik kita dan mendapatkan `refresh_token`.
 
 1. Buka [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/).
+   ![OAuth 2.0 Playground](/public/images/oauth_2_0_playground.png)
 2. Klik ikon gir (Settings) di pojok kanan atas.
+   ![Settings](/public/images/oauth_settings.png)
 3. Centang **"Use your own OAuth credentials"**.
 4. Masukkan **Client ID** dan **Client Secret** yang didapatkan dari langkah 4.
 5. Tutup menu settings.
 6. Pada bagian **Step 1**, cari dan pilih API: `Google Calendar API v3` -> `https://www.googleapis.com/auth/calendar`.
+   ![Google Calendar API v3](/public/images/step_1_calendar_api.png)
 7. Klik **Authorize APIs**. (Login menggunakan akun Google klinik/dokter yang kalendernya ingin digunakan).
+   ![Authorize APIs](/public/images/step_2_authorize_apis.png)
 8. Setelah di-redirect kembali ke Playground, pada **Step 2**, klik **Exchange authorization code for tokens**.
+   ![Exchange authorization code for tokens](/public/images/step_3_exchange_authorization_code_for_tokens.png)
 9. Anda akan mendapatkan **Refresh token**. Simpan tulisan ini!
-
+   ![Refresh token](/public/images/step_4_exchange_authorization_code_for_tokens.png)
 ---
 
 ### 6. Siapkan Vercel & Deploy
