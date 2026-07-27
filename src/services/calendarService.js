@@ -144,6 +144,7 @@ async function getBookings({ date, hour, doctorId, email } = {}) {
     calendarId: CALENDAR_ID,
     singleEvents: true,
     orderBy: 'startTime',
+    timeZone: TIMEZONE,
   };
 
   if (date && hour !== undefined && hour !== null) {
@@ -162,8 +163,8 @@ async function getBookings({ date, hour, doctorId, email } = {}) {
 
   let result = events.map((e) => {
     const startDT = e.start?.dateTime || '';
-    const eventDate = startDT.slice(0, 10);
-    const eventHour = startDT ? new Date(startDT).getHours() : null;
+    const eventDate = startDT ? startDT.slice(0, 10) : '';
+    const eventHour = startDT ? parseInt(startDT.slice(11, 13), 10) : null;
 
     const matchedDoctor = doctors.find((doc) => (e.summary || '').includes(doc.name)) || null;
 
