@@ -1,22 +1,27 @@
 [
   {
     "id": "dr-01",
-    "name": "dr. Andi Pratama, M.Ked"
+    "name": "dr. Andi Pratama, M.Ked",
+    "email": "dr.andi.clinic@yopmail.com"
   },
   {
     "id": "dr-02",
-    "name": "dr. Siti Nurhaliza, M.Ked"
+    "name": "dr. Siti Nurhaliza, M.Ked",
+    "email": "dr.siti.clinic@yopmail.com"
   },
   {
     "id": "dr-03",
-    "name": "dr. Budi Santoso, M.Ked"
+    "name": "dr. Budi Santoso, M.Ked",
+    "email": "dr.budi.clinic@yopmail.com"
   },
   {
     "id": "dr-04",
-    "name": "dr. Rina Wijaya, M.Ked"
+    "name": "dr. Rina Wijaya, M.Ked",
+    "email": "dr.rina.clinic@yopmail.com"
   },
   {
     "id": "dr-05",
-    "name": "dr. Hendra Kusuma, M.Ked"
+    "name": "dr. Hendra Kusuma, M.Ked",
+    "email": "dr.hendra.clinic@yopmail.com"
   }
 ]

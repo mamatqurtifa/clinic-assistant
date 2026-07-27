@@ -80,7 +80,10 @@ async function createBookingEvent({ doctor, date, hour, patientEmail }) {
     description: `Konsultasi online dengan ${doctor.name} melalui Google Meet.`,
     start: { dateTime: toRFC3339(date, hour), timeZone: TIMEZONE },
     end: { dateTime: toRFC3339(date, hour + 1), timeZone: TIMEZONE },
-    attendees: [{ email: patientEmail }],
+    attendees: [
+      { email: patientEmail },
+      ...(doctor.email ? [{ email: doctor.email }] : [])
+    ],
     conferenceData: { createRequest: { requestId, conferenceSolutionKey: { type: 'hangoutsMeet' } } },
     reminders: { useDefault: false, overrides: [{ method: 'email', minutes: 30 }, { method: 'popup', minutes: 15 }] }
   };
@@ -98,6 +101,18 @@ async function rescheduleBooking(eventId, { date, hour, doctor }) {
   if (doctor) {
     patch.summary = `Konsultasi dengan ${doctor.name}`;
     patch.description = `Konsultasi online dengan ${doctor.name} melalui Google Meet.`;
+    
+    // Pertahankan email pasien, tapi ganti email dokter lama dengan dokter baru
+    if (event.data.attendees) {
+      const patientEmails = event.data.attendees
+        .map(a => a.email)
+        .filter(e => !doctors.some(d => d.email === e));
+        
+      patch.attendees = [
+        ...patientEmails.map(email => ({ email })),
+        ...(doctor.email ? [{ email: doctor.email }] : [])
+      ];
+    }
   }
   const res = await calendar.events.patch({ calendarId: CALENDAR_ID, eventId, requestBody: patch, sendUpdates: 'all' });
   return res.data;
