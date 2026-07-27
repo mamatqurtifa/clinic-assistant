@@ -1,9 +1,0 @@
-// Data dokter di-hardcode dulu untuk sementara.
-
-module.exports = [
-  { id: 'dr-01', name: 'dr. Andi Pratama, M.Ked' },
-  { id: 'dr-02', name: 'dr. Siti Nurhaliza, M.Ked' },
-  { id: 'dr-03', name: 'dr. Budi Santoso, M.Ked' },
-  { id: 'dr-04', name: 'dr. Rina Wijaya, M.Ked' },
-  { id: 'dr-05', name: 'dr. Hendra Kusuma, M.Ked' },
-];
