@@ -476,4 +476,18 @@ OAUTH_LOGIN_PORT=4000
 7. Setelah variabel-variabel tersebut masuk, barulah klik **Deploy**.
 8. Setelah selesai, Vercel akan memberikan Anda URL aktif (misal: `https://clinic-assistant-backend.vercel.app`).
 
-Sekarang Anda siap lanjut setup *workflow* dengan backend `https://[url-vercel-anda]`. Nantinya anda hanya perlu mengubah domain yang ada di node **HTTP Request**.
+### Setup Workflow di Platform Agentic
+
+1. Buka dashboard Botika (Platform Agentic) dan buat bot baru.
+2. Setup **Persona** di tab persona (*sidebar* sebelah kiri). Di sini kamu juga bisa mengatur atau menyesuaikan *photo profile* bot kamu.
+3. *Copy* kode *workflow* di bawah ini:
+
+```json
+// Paste kode JSON workflow kamu di sini
+```
+
+4. Buka notepad, *paste* kode tersebut, lalu *search* (cari) tulisan `domain-backend-aku.vercel.app`. Ganti tulisan tersebut dengan domain backend Vercel kamu (yang didapatkan dari langkah deploy sebelumnya).
+5. Setelah diganti, *copy* kembali seluruh kode dari notepad. Buka halaman **Workflow** di dashboard bot (lewat *sidebar* sebelah kiri), klik kanan di area kosong pada *canvas*, lalu pilih **Paste**. Selanjutnya, di bawah node **Start** ada icon `+`, *drag* (tarik) garis dari situ dan sambungkan ke node **Set User Variable** yang posisinya paling atas.
+6. Selesai! Kamu tinggal masuk ke menu **Integrasi** untuk menghubungkan bot ke channel yang kamu inginkan.
+
+### Setup Workflow di Platform Agentic
