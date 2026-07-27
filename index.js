@@ -3,9 +3,7 @@ const express = require('express');
 const { google } = require('googleapis');
 const doctors = require('./doctors.json');
 
-// ==========================================
 // CONFIG & TIME UTILS
-// ==========================================
 const CLINIC_OPEN_HOUR = 10;
 const CLINIC_CLOSE_HOUR = 14; 
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'primary';
@@ -23,9 +21,7 @@ function isValidDate(date) { return /^\d{4}-\d{2}-\d{2}$/.test(date); }
 function pad2(num) { return String(num).padStart(2, '0'); }
 function toRFC3339(date, hour) { return `${date}T${pad2(hour)}:00:00${TZ_OFFSET}`; }
 
-// ==========================================
 // GOOGLE AUTH SERVICE
-// ==========================================
 function getOAuth2Client() {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI, GOOGLE_REFRESH_TOKEN } = process.env;
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) {
@@ -39,9 +35,7 @@ function getCalendarClient() {
   return google.calendar({ version: 'v3', auth: getOAuth2Client() });
 }
 
-// ==========================================
 // CALENDAR SERVICE
-// ==========================================
 async function getEventsInSlot(date, hour) {
   const calendar = getCalendarClient();
   const res = await calendar.events.list({
@@ -158,9 +152,7 @@ async function cancelBooking(eventId) {
   await calendar.events.delete({ calendarId: CALENDAR_ID, eventId, sendUpdates: 'all' });
 }
 
-// ==========================================
 // EXPRESS APP & ROUTES
-// ==========================================
 const app = express();
 app.use(express.json());
 app.get('/', (req, res) => res.json({ status: 'ok', service: 'Clinic Calendar Proxy' }));
