@@ -375,7 +375,6 @@ module.exports = app;
 Untuk menggunakan Google Calendar secara gratis, kita perlu membuat kunci API dari Google:
 
 1. Buka [Google Cloud Console](https://console.cloud.google.com/).
-   ![Google Cloud Console](/public/images/google_cloud_console.png)
 2. Buat Project baru (misal: `Clinic Assistant`).
    ![Buat Project](/public/images/create_project.png)
 3. Buka menu **APIs & Services** > **Library**.
@@ -389,13 +388,17 @@ Untuk menggunakan Google Calendar secara gratis, kita perlu membuat kunci API da
 Ini adalah halaman persetujuan Google yang akan muncul saat Anda memberikan akses:
 
 1. Ke menu **APIs & Services** > **OAuth consent screen**.
+   ![OAuth Consent Screen](/public/images/oauth_consent_screen.png) 
 2. Pilih **External** > klik **Create**.
 3. Isi informasi wajib:
-   - **App name**: (bebas, misal: Clinic Bot)
+   - **App name**: (bebas, misal: Clinic Assistant)
    - **User support email**: (email Anda)
    - **Developer contact info**: (email Anda)
+   ![App name](/public/images/app_name.png)
+
 4. Klik **Save and Continue** sampai selesai (tidak perlu isi scope spesifik).
 5. Pada halaman Audience / Ringkasan, klik **Publish App** (agar statusnya menjadi *In production* dan tidak *expired*).
+   ![Publish App](/public/images/publish_app.png)
 
 ---
 
@@ -404,7 +407,9 @@ Ini adalah halaman persetujuan Google yang akan muncul saat Anda memberikan akse
 Ini adalah langkah untuk mendapatkan `Client ID` dan `Client Secret` milik Anda:
 
 1. Ke menu **APIs & Services** > **Credentials**.
+   ![Credentials](/public/images/credentials.png)
 2. Klik **Create Credentials** > **OAuth client ID**.
+   ![Create Credentials](/public/images/create_credentials.png)
 3. Pilih **Application type**: **Web application**.
 4. Beri nama (misal: `Proxy`).
 5. Pada bagian **Authorized redirect URIs**, klik **Add URI**.
@@ -412,8 +417,9 @@ Ini adalah langkah untuk mendapatkan `Client ID` dan `Client Secret` milik Anda:
    ```
    https://developers.google.com/oauthplayground
    ```
+   ![Authorized redirect URIs](/public/images/authorized_redirect_uris.png)
 7. Klik **Create**. Anda akan mendapatkan **Client ID** dan **Client secret**. Catat dan simpan keduanya!
-
+   ![Client ID and Client Secret](/public/images/client_id_and_client_secret.png)
 ---
 
 ### 5. Dapatkan Refresh Token via Google OAuth Playground
