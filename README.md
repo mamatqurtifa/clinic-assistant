@@ -20,6 +20,9 @@ Ikuti panduan langkah demi langkah di bawah ini untuk menyiapkannya. Panduan ini
 Vercel membutuhkan repositori GitHub untuk di-deploy. Anda harus membuat repositori milik Anda sendiri yang berisi 3 file utama.
 
 1. Buka [github.com](https://github.com) dan buat repository baru (misal: `clinic-assistant-backend`).
+
+    ![Github Create Repository](/public/images/github_create_repository.png)
+
 2. Di dalam repository tersebut, buat 3 file baru persis dengan nama di bawah, dan *copy-paste* kode ke masing-masing file:
 
 **1. package.json**
@@ -372,10 +375,13 @@ module.exports = app;
 Untuk menggunakan Google Calendar secara gratis, kita perlu membuat kunci API dari Google:
 
 1. Buka [Google Cloud Console](https://console.cloud.google.com/).
+   ![Google Cloud Console](/public/images/google_cloud_console.png)
 2. Buat Project baru (misal: `Clinic Assistant`).
+   ![Buat Project](/public/images/create_project.png)
 3. Buka menu **APIs & Services** > **Library**.
+   ![APIs & Services](/public/images/apis_and_services.png)
 4. Cari **Google Calendar API** lalu klik **Enable**.
-
+   ![Enable Google Calendar API](/public/images/enable_calendar_api.png)
 ---
 
 ### 3. Konfigurasi OAuth Consent Screen
@@ -438,12 +444,17 @@ Kita akan menggunakan Google OAuth Playground untuk mengizinkan aplikasi membaca
 
    | Name | Value | Keterangan |
    |------|-------|------------|
-   | `GOOGLE_CLIENT_ID` | `(Masukkan dari Langkah 4)` | Dari Google Cloud Console |
-   | `GOOGLE_CLIENT_SECRET` | `(Masukkan dari Langkah 4)` | Dari Google Cloud Console |
-   | `GOOGLE_REFRESH_TOKEN` | `(Masukkan dari Langkah 5)` | Dari Google Playground |
-   | `GOOGLE_CALENDAR_ID` | `primary` | Pakai kalender utama email klinik |
+   | `GOOGLE_CLIENT_ID` | `(Masukkan dari Langkah 4)` | Client ID dari Google Cloud Console |
+   | `GOOGLE_CLIENT_SECRET` | `(Masukkan dari Langkah 4)` | Client Secret dari Google Cloud Console |
+   | `GOOGLE_REDIRECT_URI` | `http://localhost:4000/oauth2callback` | URI redirect OAuth (opsional/hanya untuk local) |
+   | `GOOGLE_REFRESH_TOKEN` | `(Masukkan dari Langkah 5)` | Token penyegaran dari Google Playground |
+   | `GOOGLE_CALENDAR_ID` | `primary` | ID kalender utama email klinik |
+   | `CLINIC_TIMEZONE` | `Asia/Jakarta` | Zona waktu klinik |
+   | `CLINIC_TZ_OFFSET` | `+07:00` | Offset zona waktu (WIB) |
+   | `PORT` | `3000` | Port default server |
+   | `OAUTH_LOGIN_PORT` | `4000` | Port login lokal (opsional) |
 
-6. Setelah 4 variabel tersebut masuk, barulah klik **Deploy**.
+6. Setelah variabel-variabel tersebut masuk, barulah klik **Deploy**.
 7. Setelah selesai, Vercel akan memberikan Anda URL aktif (misal: `https://clinic-assistant-backend.vercel.app`).
 
 **Selesai!** Endpoint Anda sekarang siap digunakan di chatbot atau *workflow* pada `https://[url-vercel-anda]/api/bookings` dan lain-lain. Seluruh dokumentasi teknis API dapat dilihat di file `API.md` jika Anda menyertakannya.
