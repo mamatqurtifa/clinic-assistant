@@ -448,24 +448,32 @@ Kita akan menggunakan Google OAuth Playground untuk mengizinkan aplikasi membaca
 3 file kita di Github tadi sekarang sudah bisa kita online-kan di Vercel:
 
 1. Buka [vercel.com](https://vercel.com) dan **login** menggunakan GitHub Anda.
+   ![Vercel](/public/images/vercel.png)
 2. Dari dashboard Vercel, klik **Add New Project**.
+   ![Add New Project](/public/images/add_new_project.png)
 3. Cari repository GitHub `clinic-assistant-backend` yang dibuat pada Langkah 1, lalu klik **Import**.
-4. Di bagian pengisian data, **jangan klik Deploy dulu**, cari bagian **Environment Variables**.
-5. Masukkan 4 variabel ini satu per satu (masukkan Name lalu Value, dan klik Add):
+   ![Import Repository](/public/images/import_repository.png)
+4. Buka notepad dan *copy-paste* teks di bawah ini. Kamu **hanya perlu mengisi 3 baris yang masih kosong** dengan data yang sudah kamu dapatkan sebelumnya. Sisa baris lainnya biarkan saja apa adanya:
+   - `GOOGLE_CLIENT_ID` = (Isi dengan Client ID dari Langkah 4)
+   - `GOOGLE_CLIENT_SECRET` = (Isi dengan Client Secret dari Langkah 4)
+   - `GOOGLE_REFRESH_TOKEN` = (Isi dengan Refresh Token dari Langkah 5)
 
-   | Name | Value | Keterangan |
-   |------|-------|------------|
-   | `GOOGLE_CLIENT_ID` | `(Masukkan dari Langkah 4)` | Client ID dari Google Cloud Console |
-   | `GOOGLE_CLIENT_SECRET` | `(Masukkan dari Langkah 4)` | Client Secret dari Google Cloud Console |
-   | `GOOGLE_REDIRECT_URI` | `http://localhost:4000/oauth2callback` | URI redirect OAuth (opsional/hanya untuk local) |
-   | `GOOGLE_REFRESH_TOKEN` | `(Masukkan dari Langkah 5)` | Token penyegaran dari Google Playground |
-   | `GOOGLE_CALENDAR_ID` | `primary` | ID kalender utama email klinik |
-   | `CLINIC_TIMEZONE` | `Asia/Jakarta` | Zona waktu klinik |
-   | `CLINIC_TZ_OFFSET` | `+07:00` | Offset zona waktu (WIB) |
-   | `PORT` | `3000` | Port default server |
-   | `OAUTH_LOGIN_PORT` | `4000` | Port login lokal (opsional) |
+```text
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:4000/oauth2callback
+GOOGLE_REFRESH_TOKEN=
+GOOGLE_CALENDAR_ID=primary
+CLINIC_TIMEZONE=Asia/Jakarta
+CLINIC_TZ_OFFSET=+07:00
+PORT=3000
+OAUTH_LOGIN_PORT=4000
+```
 
-6. Setelah variabel-variabel tersebut masuk, barulah klik **Deploy**.
-7. Setelah selesai, Vercel akan memberikan Anda URL aktif (misal: `https://clinic-assistant-backend.vercel.app`).
+5. Di bagian pengisian data di Vercel, **jangan klik Deploy dulu**, cari bagian **Environment Variables**.
+   ![Environment Variables](/public/images/environment_variables.png)
+6. *Copy* seluruh isi teks dari notepad tadi, lalu *paste* langsung ke kotak pertama pada bagian **Environment Variables**. Vercel akan otomatis mengenali dan memasukkan ke-9 variabel tersebut sekaligus!
+7. Setelah variabel-variabel tersebut masuk, barulah klik **Deploy**.
+8. Setelah selesai, Vercel akan memberikan Anda URL aktif (misal: `https://clinic-assistant-backend.vercel.app`).
 
-**Selesai!** Endpoint Anda sekarang siap digunakan di chatbot atau *workflow* pada `https://[url-vercel-anda]/api/bookings` dan lain-lain. Seluruh dokumentasi teknis API dapat dilihat di file `API.md` jika Anda menyertakannya.
+Sekarang Anda siap lanjut setup *workflow* dengan backend `https://[url-vercel-anda]`. Nantinya anda hanya perlu mengubah domain yang ada di node **HTTP Request**.
