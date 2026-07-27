@@ -11,14 +11,13 @@ Backend Express.js sederhana yang jadi **proxy** ke Google Calendar API. Project
 - **Query booking** dengan filter fleksibel: tanggal, jam, dan/atau dokter tertentu (`GET /api/bookings`)
 - **Batalkan booking** dan kirim notifikasi pembatalan otomatis ke pasien (`DELETE /api/bookings/:eventId`)
 - Data 5 dokter umum masih hardcode di `src/config/doctors.js`
-- Login OAuth2 cukup dilakukan **1 kali** lewat `scripts/oauth-login.js`, setelahnya backend pakai refresh token otomatis selamanya
+- Login OAuth2 cukup dilakukan **1 kali** lewat `oauth-login.js`, setelahnya backend pakai refresh token otomatis selamanya
 
 ## Struktur Project
 
 ```
 clinic-calendar-proxy/
-├── scripts/
-│   └── oauth-login.js          # Script one-time login untuk dapat refresh token
+├── oauth-login.js              # Script one-time login untuk dapat refresh token
 ├── doctors.json                # Data 5 dokter
 ├── API.md                      # Dokumentasi Endpoint
 ├── index.js                    # Core monolith backend (Semua logic API)

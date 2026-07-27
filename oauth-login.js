@@ -2,7 +2,7 @@
  * Script ini dijalankan SATU KALI SAJA (one-time setup) untuk login
  * ke akun Google clinic dan mendapatkan refresh_token.
  *
- * Setelah refresh_token didapat, backend Express (src/) tidak perlu
+ * Setelah refresh_token didapat, backend Express tidak perlu
  * login ulang lagi selamanya (kecuali refresh_token di-revoke manual).
  *
  * Cara pakai:
@@ -35,8 +35,8 @@ const oauth2Client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECR
 const SCOPES = ['https://www.googleapis.com/auth/calendar'];
 
 const authUrl = oauth2Client.generateAuthUrl({
-  access_type: 'offline', // wajib, supaya Google kirim refresh_token
-  prompt: 'consent', // wajib, supaya refresh_token selalu dikirim ulang tiap login
+  access_type: 'offline', 
+  prompt: 'consent', 
   scope: SCOPES,
 });
 
@@ -101,7 +101,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 function saveRefreshTokenToEnv(refreshToken) {
-  const envPath = path.join(__dirname, '..', '.env');
+  // Karena sekarang file ini ada di root directory, .env juga ada di root (__dirname)
+  const envPath = path.join(__dirname, '.env');
   let envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
 
   if (envContent.includes('GOOGLE_REFRESH_TOKEN=')) {
