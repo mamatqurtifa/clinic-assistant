@@ -490,4 +490,33 @@ OAUTH_LOGIN_PORT=4000
 5. Setelah diganti, *copy* kembali seluruh kode dari notepad. Buka halaman **Workflow** di dashboard bot (lewat *sidebar* sebelah kiri), klik kanan di area kosong pada *canvas*, lalu pilih **Paste**. Selanjutnya, di bawah node **Start** ada icon `+`, *drag* (tarik) garis dari situ dan sambungkan ke node **Set User Variable** yang posisinya paling atas.
 6. Selesai! Kamu tinggal masuk ke menu **Integrasi** untuk menghubungkan bot ke channel yang kamu inginkan.
 
-### Setup Workflow di Platform Agentic
+---
+
+### Hasil Akhir Workflow
+Berikut adalah tampilan *workflow* setelah berhasil di-*import* ke *canvas*:
+![Workflow Node](/public/images/workflow_node.png)
+
+### Coba Langsung (Live Demo)
+Ingin melihat cara kerjanya secara langsung? Kamu bisa mencoba berinteraksi dengan Chatbot Clinic Assistant melalui *link* berikut:
+👉 [Coba Chatbot di Sini chat.botika.online](https://chat.botika.online/v3/1PZhYGi)
+
+### Cuplikan Penggunaan Chatbot
+Berikut adalah beberapa tangkapan layar (*screenshot*) interaksi dari fitur-fitur utama yang tersedia pada Chatbot Clinic Assistant:
+
+**1. Membuat Reservasi (Booking) dengan Dokter**
+![Booking Jadwal](/public/images/contoh_booking.png)
+
+**2. Melihat Jadwal Kosong (Cek Ketersediaan)**
+![Cek Ketersediaan](/public/images/contoh_cek_jadwal_kosong.png)
+
+**3. Melihat Daftar Dokter**
+![Daftar Dokter](/public/images/contoh_daftar_dokter.png)
+
+**4. Mengecek Jadwal Pasien**
+![Cek Jadwal Pasien](/public/images/contoh_cek_jadwal_pasien.png)
+
+**5. Mengubah Jadwal (Reschedule)**
+![Reschedule Jadwal](/public/images/contoh_reschedule.png)
+
+**6. Membatalkan Jadwal (Cancel/Delete)**
+![Batalkan Jadwal](/public/images/contoh_batal.png)
