@@ -498,7 +498,7 @@ Berikut adalah tampilan *workflow* setelah berhasil di-*import* ke *canvas*:
 
 ### Coba Langsung (Live Demo)
 Ingin melihat cara kerjanya secara langsung? Kamu bisa mencoba berinteraksi dengan Chatbot Clinic Assistant melalui *link* berikut:
-👉 [Coba Chatbot di Sini chat.botika.online](https://chat.botika.online/v3/1PZhYGi)
+[Coba Chatbot di Sini chat.botika.online](https://chat.botika.online/v3/1PZhYGi)
 
 ### Cuplikan Penggunaan Chatbot
 Berikut adalah beberapa tangkapan layar (*screenshot*) interaksi dari fitur-fitur utama yang tersedia pada Chatbot Clinic Assistant:
