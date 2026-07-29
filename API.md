@@ -200,26 +200,39 @@ Ganti tanggal, jam, dan/atau dokter. `eventId` wajib. Minimal satu field perubah
 
 **Endpoint:** `POST /api/bookings/cancel`
 
-Google Calendar otomatis **mengirim notifikasi pembatalan** ke email pasien. Pembatalan menggunakan `eventId`.
+Google Calendar otomatis **mengirim notifikasi pembatalan** ke email pasien. Endpoint ini mendukung pembatalan satu jadwal maupun beberapa jadwal sekaligus.
 
-**Body Request:**
+**Body Request (Kirim salah satu: `eventId` ATAU `eventIds`):**
 ```json
 {
-  "eventId": "abc123"
+  "eventIds": ["abc123", "def456"]
 }
 ```
 
-**Response sukses:**
+| Field      | Tipe   | Keterangan                                                     |
+|------------|--------|----------------------------------------------------------------|
+| `eventId`  | string | ID dari satu booking yang akan dibatalkan. Opsional.           |
+| `eventIds` | array  | Daftar (array) ID booking yang akan dibatalkan. Opsional.      |
+
+*Catatan: Kamu wajib mengirimkan minimal salah satu dari field di atas.*
+
+**Response sukses (200):**
 ```json
 {
-  "message": "Booking berhasil dibatalkan. Notifikasi pembatalan dikirim ke pasien.",
-  "eventId": "abc123"
+  "message": "Berhasil membatalkan 2 booking.",
+  "deletedCount": 2,
+  "deletedIds": [
+    "abc123",
+    "def456"
+  ],
+  "failedCount": 0,
+  "failedIds": []
 }
 ```
 
-**Response jika tidak ditemukan (404):**
+**Response error validasi (400):**
 ```json
 {
-  "error": "Booking tidak ditemukan atau sudah dibatalkan."
+  "error": "Field \"eventId\" (string) atau \"eventIds\" (array) wajib diisi."
 }
 ```
