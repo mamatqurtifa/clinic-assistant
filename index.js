@@ -285,13 +285,36 @@ app.post('/api/bookings/list', async (req, res) => {
 
 app.post('/api/bookings/cancel', async (req, res) => {
   try {
-    const { eventId } = req.body;
-    if (!eventId) return res.status(400).json({ error: 'Field "eventId" wajib diisi.' });
-    await cancelBooking(eventId);
-    return res.json({ message: 'Booking berhasil dibatalkan.', eventId });
+    const { eventId, eventIds } = req.body;
+    if (!eventId && (!eventIds || !Array.isArray(eventIds) || eventIds.length === 0)) {
+      return res.status(400).json({ error: 'Field "eventId" (string) atau "eventIds" (array) wajib diisi.' });
+    }
+    
+    const idsToDelete = eventIds && eventIds.length > 0 ? eventIds : [eventId];
+    const deletedIds = [];
+    const failedIds = [];
+    
+    for (const id of idsToDelete) {
+      if (!id) continue;
+      try {
+        await cancelBooking(id);
+        deletedIds.push(id);
+      } catch (e) {
+        console.error(`Gagal menghapus eventId ${id}:`, e.message);
+        failedIds.push(id);
+      }
+    }
+    
+    return res.json({ 
+      message: `Berhasil membatalkan ${deletedIds.length} booking.`,
+      deletedCount: deletedIds.length,
+      deletedIds,
+      failedCount: failedIds.length,
+      failedIds
+    });
   } catch (err) {
     console.error('Cancel Booking Error:', err);
-    return res.status(404).json({ error: 'Booking tidak ditemukan atau sudah dibatalkan.' });
+    return res.status(500).json({ error: 'Terjadi kesalahan saat membatalkan booking.' });
   }
 });
 
