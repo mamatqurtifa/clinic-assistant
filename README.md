@@ -506,7 +506,3010 @@ OAUTH_LOGIN_PORT=4000
 3. *Copy* kode *workflow* di bawah ini:
 
 ```json
-{"nodes":[{"id":"0rzkkdrq8y","type":"set-user-var","position":{"x":51.5,"y":116},"properties":{"label":"Set User Variable","variables":[{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"secret","data_type":"string","persist":false,"var_value":""},{"var_key":"previous_output","data_type":"string","persist":false,"var_value":""},{"var_key":"first_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"docter_schedule","data_type":"string","persist":false,"var_value":""},{"var_key":"user_schedule","data_type":"string","persist":false,"var_value":""},{"var_key":"second_message","data_type":"string","persist":false,"var_value":""},{"var_key":"third_message","data_type":"string","persist":false,"var_value":""}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"g4nkz26big"}]}},{"id":"40k0y9h3mj","type":"entity-llm","position":{"x":58.5,"y":391},"properties":{"label":"Entity LLM","model":"azure-openai/gpt-4o","description":"","llm_provider":"azure_openai","text_message":"{{client_message}}","entities_schema":[{"name":"intent","example":["Book Appointment","Check Slot Availability","Cancel Booking","Reschedule Appointment","Check My Booking","List Doctors"],"description":"Determine the main intent of the user regarding the doctor appointment booking feature, then choose ONE category that fits best: \"Book Appointment\", \"Check Slot Availability\", \"Cancel Booking\", \"Reschedule Appointment\", \"List Doctors\", \"Check My Booking\".\n\nMAIN PRINCIPLE\nClassify based on the user's INTENT, not just literal keywords. Many requests are implicit, casual, short, or mixed Indonesian-English, without explicit verbs like \"book\", \"cancel\", \"reschedule\", or \"check\". Read the sentence as a whole context, including previous messages / previous_output in the conversation if relevant (e.g. the user refers to \"that appointment\", \"yang tadi\", or is mid-flow answering a follow-up question you already asked).\n\nBOOK APPOINTMENT\nClassify as \"Book Appointment\" if:\n- The user explicitly requests a consultation schedule and mentions a specific desired time within the 10:00–14:00 range. Example: \"I want to book at 11 AM\", \"jam 11 ya\", \"bisa jam 1 siang?\".\n- The user states an intention to see a doctor at a specific time, even without saying \"book\" explicitly. Example: \"I want to see a doctor at 10:30 tomorrow\", \"besok jam 11 mau ketemu dokter\".\n- The user is answering a follow-up question that YOU (the bot) already asked as part of an ongoing booking flow — e.g. previous_output shows intent \"Book Appointment\" and the bot had just asked for time/email/doctor, and the user's current message is just a plain answer (a time, an email, a doctor name, \"iya\", \"boleh\", a confirmation) with no new topic introduced. In this case, KEEP the intent as \"Book Appointment\" even if the message alone looks vague or incomplete, because it's a continuation, not a new question.\n- General intention to make an appointment without a specific time yet (e.g. \"mau booking dong\", \"ketemu dokter\", \"mau konsultasi\") when there is NO prior context suggesting the user is just browsing options, AND there is no reference to an existing appointment being changed — treat this as the start of a booking flow (\"Book Appointment\"), since the next step will naturally ask for the missing time. Only fall back to \"Check Slot Availability\" if the phrasing clearly signals the user wants to see options first (see next section), and only fall back to \"Reschedule Appointment\" if there's a reference to an existing booking being moved (see below).\n\nCHECK SLOT AVAILABILITY\nClassify as \"Check Slot Availability\" if:\n- The user asks which time slots are still open/available, without committing to one specific time. Example: \"What times are still open?\", \"Any slots available this afternoon?\", \"kosong ga?\", \"ada slot ga hari ini?\", \"jam berapa aja yang kosong?\".\n- The phrasing signals exploration/checking rather than commitment — look for question words paired with availability (\"kosong\", \"available\", \"ada ga\") rather than a request to reserve. Example: \"besok kosong ga\", \"sekarang ada jadwal ga\".\n- The user is exploring options before deciding, not yet committing to a specific time.\n- KEY DIFFERENCE FROM \"LIST DOCTORS\": this category is about WHEN slots are open (time-focused), not about WHO the doctors are (see \"List Doctors\" below for that).\n\nDISAMBIGUATING \"KOSONG\" / \"ADA\" TYPE PHRASES (common source of confusion)\nThese short Indonesian phrases are availability-checking questions, NOT bookings, even though they relate to appointments:\n- \"kosong ga?\", \"ada kosong ga?\", \"available ga?\", \"ada slot ga?\" -> Check Slot Availability\n- Adding a specific time to this pattern flips it to a real ambiguity: e.g. \"jam 11 kosong ga?\" is still primarily a question (checking), so default it to \"Check Slot Availability\" UNLESS the surrounding context makes clear the user wants to reserve that exact time right away (e.g. they follow up with \"oke jam segitu aja\" or already answered a booking-flow question). When truly ambiguous between the two, prefer \"Check Slot Availability\" first — booking will naturally follow once the user confirms.\n\nLIST DOCTORS\nClassify as \"List Doctors\" if:\n- The user asks who the available doctors are, in general, WITHOUT tying the question to a specific time slot or an existing booking. Example: \"dokternya siapa aja?\", \"ada dokter apa aja di sini?\", \"list dokternya dong\", \"dokter yang praktik siapa aja ya?\".\n- The user asks about a specific doctor's existence/availability in general (not tied to booking a time), e.g. \"ada dokter kandungan ga?\", \"dr. Budi masih praktik ga?\".\n- KEY DIFFERENCE FROM \"CHECK SLOT AVAILABILITY\": this category is about WHO the doctors are (identity-focused), not about WHEN slots are open. If the question mixes both (e.g. \"dokter budi kosong jam berapa aja?\"), prioritize \"Check Slot Availability\" since the user is ultimately asking about timing, using the doctor's name just to narrow it down.\n- KEY DIFFERENCE FROM \"BOOK APPOINTMENT\": if the user is being asked (via the ongoing booking flow) to pick a doctor from an already-shown list, and their message is just answering with a name, that's a continuation of \"Book Appointment\" (see CONTEXT CARRY-OVER RULE), NOT a new \"List Doctors\" request.\n\nCHECK MY BOOKING\nClassify as \"Check My Booking\" if:\n- The user asks about the details/status of an appointment they already have, without wanting to change or cancel it. Example: \"booking aku kapan ya?\", \"jadwal konsultasi aku jam berapa?\", \"aku ada janji ga sih hari ini?\", \"cek dong booking aku yang kemarin\", \"link meet aku yang tadi apa ya, lupa\".\n- The user wants to be reminded of details of an existing booking (date, time, doctor, meet link) — purely informational, no intent to modify anything.\n- KEY DIFFERENCE FROM \"RESCHEDULE\"/\"CANCEL\": if the user follows up asking to change or remove the booking after checking it, that next message should be classified based on what they ask for then (Reschedule/Cancel), not retroactively changed here. This category is only for the pure \"what/when is my booking\" question itself.\n\nCANCEL BOOKING\nClassify as \"Cancel Booking\" if:\n- The user wants to cancel an appointment that has already been made, WITHOUT wanting to replace it with a new time. Example: \"Please cancel my appointment at 11\", \"I want to cancel my booking\", \"batalin dong janji ketemu dokter\", \"gajadi ya booking-nya\", \"batal aja deh, ga jadi konsultasi\".\n- Requires a reference to an existing/previously made appointment, even implied (e.g. \"gajadi deh\" right after confirming a booking earlier in the conversation).\n- KEY DIFFERENCE FROM RESCHEDULE: cancel means the user wants to STOP/REMOVE the appointment entirely with no new time mentioned or implied. If a new/different time is mentioned alongside the cancellation-sounding words, it's \"Reschedule Appointment\" instead (see below).\n\nRESCHEDULE APPOINTMENT\nClassify as \"Reschedule Appointment\" if:\n- The user wants to change the time/date of an appointment that has ALREADY been made, to a DIFFERENT time/date — not remove it entirely. Example: \"reschedule ya\", \"boleh geser jadwalnya ga\", \"ganti jadi jam 1 aja\", \"pindah ke besok ya\", \"ubah jamnya jadi jam 12\", \"aku maunya jam 11 aja bukan jam 10\".\n- Requires a reference (explicit or implied via context/previous_output) to an existing appointment being moved — not a brand new booking from scratch. If there's no existing appointment in context at all, don't use this category even if the phrasing looks like \"ganti jam\" — treat it as \"Book Appointment\" instead, since there's nothing to reschedule yet.\n- The user cancels an old time AND immediately gives a new time in the same breath — this is \"Reschedule Appointment\", NOT \"Cancel Booking\", because the appointment is being moved, not removed. Example: \"eh gajadi jam 10, jam 1 aja deh\", \"batal yang jam 11, ganti jam 2 ya\".\n\nDISAMBIGUATING \"CANCEL\" vs \"RESCHEDULE\" (common source of confusion)\nThis is the trickiest ambiguity — read carefully for whether a NEW time is given or implied:\n- Cancellation words alone, no new time mentioned -> \"Cancel Booking\". Example: \"gajadi deh\", \"batalin aja\", \"ga jadi konsultasi\".\n- Cancellation words + a new time in the same message -> \"Reschedule Appointment\", NOT \"Cancel Booking\". Example: \"gajadi jam 10, jam 1 aja deh\", \"batal yang tadi, ganti besok ya\".\n- Words that mean \"change/move\" without explicit cancel wording -> always \"Reschedule Appointment\" if there's an existing appointment in context. Example: \"boleh ga diganti jamnya\", \"geser ke besok dong\", \"pindahin ke jam 12\".\n- If the bot just asked \"mau reschedule atau cancel aja?\" (a clarifying question from a previous unclear case) and the user replies with just a new time (e.g. \"jam 1 aja\") -> \"Reschedule Appointment\" (carry-over + implied intent from the new time given).\n- If it's genuinely unclear whether the user wants to cancel entirely or just move the time (e.g. \"yang jam 10 gajadi ya\" with no new time and no prior context making it obvious) -> default to \"Cancel Booking\" first, since that's the literal request; a follow-up step can always ask if they'd like to pick a new time instead, which would then become \"Reschedule Appointment\" on the next turn.\n\nCONTEXT CARRY-OVER RULE (important for short/incomplete follow-up messages)\nIf \"previous_output\" already shows an established intent (e.g. \"Book Appointment\", \"Reschedule Appointment\", or \"Cancel Booking\"), and the user's current message is short, vague on its own, or purely answering something the bot just asked (a time, an email, a doctor name, \"iya\", \"oke\", \"boleh\", \"gitu aja deh\") — DO NOT reclassify based on the message alone. Carry over the previous intent unless the new message clearly introduces a different action (e.g. suddenly asking to cancel entirely instead of moving the time, or asking a general \"kosong ga\" question unrelated to what was asked).\n\nWHEN NOT TO CHOOSE \"BOOK APPOINTMENT\"\n- If the user only asks about open slots without naming one specific time to commit to, and there's no ongoing booking-flow context -> \"Check Slot Availability\".\n- If the user only asks who the doctors are, without any time context -> \"List Doctors\".\n- If the user asks about their own existing booking's details without wanting to change it -> \"Check My Booking\".\n- If the user refers to an existing appointment and wants to remove it entirely -> \"Cancel Booking\", not \"Book Appointment\".\n- If the user refers to an existing appointment and wants to move it to a different time -> \"Reschedule Appointment\", not \"Book Appointment\".\n\nPRIORITY ORDER WHEN AMBIGUOUS\n1. If there is an explicit reference to an existing appointment AND a new time is given/implied in the same context -> \"Reschedule Appointment\".\n2. If there is an explicit reference to an existing appointment AND the user wants to remove it with no new time given -> \"Cancel Booking\".\n3. If previous_output shows an ongoing intent and the current message is just a follow-up answer (see CONTEXT CARRY-OVER RULE), keep that same intent.\n4. If the user is asking about their own existing booking's details, purely informational -> \"Check My Booking\".\n5. If the user names one specific time slot AND the phrasing signals commitment (not just checking) AND there's no existing appointment being referenced -> \"Book Appointment\".\n6. If the user is asking who the doctors are (identity-focused, no time context) -> \"List Doctors\".\n7. If the user is only asking what times are open, or the phrasing is a \"kosong/ada\" style question (even with a time attached) and there's no carry-over context -> \"Check Slot Availability\".\n\nEXAMPLES\n- \"I'd like to book a consultation at 11 AM\" -> Book Appointment\n- \"What times are still available today?\" -> Check Slot Availability\n- \"Please cancel my appointment at 1 PM\" -> Cancel Booking\n- \"kosong ga?\" -> Check Slot Availability\n- \"besok jam 11 kosong ga?\" (no ongoing booking context) -> Check Slot Availability\n- \"ketemu dokter\" (no prior context) -> Book Appointment\n- previous_output = Book Appointment, bot just asked for time, user replies \"jam 11 aja\" -> Book Appointment (carry-over)\n- previous_output = Book Appointment, bot just asked for email, user replies \"budi@email.com\" -> Book Appointment (carry-over)\n- previous_output = Book Appointment (already scheduled), user says \"eh gajadi deh\" -> Cancel Booking\n- \"batalin yang jam 11 tadi\" -> Cancel Booking\n- \"boleh geser jadwal ga yang jam 11 tadi ke jam 1?\" -> Reschedule Appointment\n- \"eh gajadi jam 10, jam 1 aja deh\" (ada appointment sebelumnya) -> Reschedule Appointment\n- \"ganti jamnya jadi jam 12 ya\" (ada appointment sebelumnya) -> Reschedule Appointment\n- \"ganti jamnya jadi jam 12 ya\" (TIDAK ada appointment sebelumnya sama sekali di context) -> Book Appointment\n- previous_output = Reschedule Appointment, bot baru nanya \"mau pindah ke jam berapa?\", user jawab \"jam 2 aja\" -> Reschedule Appointment (carry-over)\n- \"yang jam 10 gajadi ya\" (tidak ada waktu baru disebut, tidak ada konteks lanjutan) -> Cancel Booking\n- \"dokternya siapa aja ya?\" -> List Doctors\n- \"ada dokter kandungan ga?\" -> List Doctors\n- \"dr. Budi kosong jam berapa aja?\" (nyebut nama dokter TAPI intinya nanya jam) -> Check Slot Availability\n- \"booking aku kapan ya?\" -> Check My Booking\n- \"link meet aku yang tadi apa ya\" -> Check My Booking\n- \"aku ada janji ga hari ini?\" -> Check My Booking\n- previous_output = Check My Booking (baru saja dikasih tau detail bookingnya), user lanjut bilang \"batalin aja deh\" -> Cancel Booking (topik baru, bukan carry-over dari Check My Booking)\n\nIf the user's intent still cannot be determined after considering the rules above and conversation context, choose the closest matching category — do not leave it empty."}],"validation_errors":[],"validation_warnings":[]},"next":{"main":[{"type":"continue","target_node":"8jih0cz230"}]}},{"id":"8jih0cz230","type":"switch","position":{"x":58.5,"y":471},"properties":{"label":"Switch","rules":[{"combinator":"and","conditions":[{"operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output.intent.[0]}}","compared_value":"Book Appointment"}]},{"combinator":"and","conditions":[{"operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output.intent.[0]}}","compared_value":"Check Slot Availability"}]},{"combinator":"and","conditions":[{"operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output.intent.[0]}}","compared_value":"Cancel Booking"}]},{"combinator":"and","conditions":[{"operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output.intent.[0]}}","compared_value":"Check My Booking"}]},{"combinator":"and","conditions":[{"operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output.intent.[0]}}","compared_value":"Reschedule Appointment"}]},{"combinator":"and","conditions":[{"operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output.intent.[0]}}","compared_value":"List Doctors"}]},{"combinator":"and","conditions":[{"operator":{"type":"string","operation":"not_equals","case_sensitive":false,"single_value_check":true},"source_value":"{{node_output}}","compared_value":""}]}],"description":"","fallback_target":6},"next":{"0":[{"type":"continue","target_node":"zw3blfblja"}],"1":[{"type":"continue","target_node":"r72717dd9x"}],"2":[{"type":"continue","target_node":"1rb9znof73"}],"3":[{"type":"continue","target_node":"9p1g83kven"}],"4":[{"type":"continue","target_node":"4xzglnta3c"}],"5":[{"type":"continue","target_node":"vk1197bxgl"}],"6":[{"type":"continue","target_node":"snh1l2kf4q"}]}},{"id":"wcfmf5g100","type":"if-condition","position":{"x":51.5,"y":285},"properties":{"label":"If Condition","combinator":"and","conditions":[{"id":"conditon-1","operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output}}","compared_value":"NOTSET"}],"description":""},"next":{"true":[{"type":"continue","target_node":"j22o8mvg5u"}],"false":[{"type":"continue","target_node":"40k0y9h3mj"}]}},{"id":"j22o8mvg5u","type":"agent-assistant","position":{"x":-173,"y":332.5},"properties":{"label":"Agent Assistant","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Tanya Email Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini HANYA satu: menanyakan alamat email pasien. Email ini akan digunakan untuk mengirim undangan Google Calendar berisi jadwal konsultasi dan link Google Meet.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n\n{\n  \"source_data\": {\n    \"user_message\": \"hai\"\n  },\n  \"node_output\": {\n    \"client_message\": \"hai\",\n    \"secret\": \"\",\n    \"previous_output\": \"\"\n  }\n}\n\nCara membaca input:\n- \"user_message\" / \"client_message\" berisi pesan terbaru dari pasien.\n- \"previous_output\" berisi balasan kamu sebelumnya (kalau ada), gunakan sebagai konteks agar respons kamu nyambung dan tidak mengulang pertanyaan yang sudah dijawab.\n- Kalau \"previous_output\" kosong, anggap ini adalah awal percakapan.\n\nINSTRUKSI PERILAKU\n1. Sapa pasien dengan ramah dan natural, seolah kamu adalah staf front office klinik yang sigap membantu.\n2. Setelah menyapa (atau merespons pesan pasien), tanyakan alamat email mereka dengan sopan. Jelaskan singkat alasannya, misalnya untuk mengirim undangan jadwal & link meeting konsultasi.\n3. Jika pesan pasien sudah berisi alamat email yang valid, konfirmasi ulang email tersebut dengan sopan (misalnya: \"Baik, email-nya [email] ya?\") sebelum lanjut ke proses berikutnya.\n4. Jika format email yang diberikan terlihat tidak valid (tidak ada \"@\", typo jelas, dll), minta pasien untuk mengecek dan mengirim ulang emailnya dengan nada yang tetap ramah, tidak menghakimi.\n5. Jangan menanyakan hal lain di luar scope ini (jangan tanya jam, dokter, keluhan medis, dll) — fokus hanya pada mengumpulkan email.\n6. Jangan memberi saran medis atau diagnosis apapun.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, hangat, dan terasa seperti manusia asli (bukan kaku/robotik).\n- Boleh menggunakan emoji ekspresi wajah (reaction emoji) untuk menambah kehangatan, contoh: 😊 🙂 😄 🙏\n- DILARANG menggunakan emoji selain ekspresi wajah, contohnya emoji objek/simbol seperti 📅, ✉️, 📧, ✅, dll TIDAK BOLEH digunakan.\n- Jaga respons tetap singkat, jelas, dan tidak bertele-tele (idealnya 1–3 kalimat).\n- Jangan gunakan format list, bold, atau markdown lain — tulis sebagai teks percakapan biasa.\n\nCONTOH OUTPUT YANG BENAR\n\"Hai juga! 😊 Sebelum lanjut atur jadwal konsultasinya, boleh minta alamat emailnya dulu? Nanti undangan jadwal & link meeting-nya bakal dikirim ke situ.\"\n\nCONTOH OUTPUT YANG SALAH (mengandung emoji objek)\n\"Hai! 📅 Boleh kirim emailnya ✉️ biar aku kirimkan undangan meeting?\"","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"uuwkriu8mm"}]}},{"id":"ynnwo3v4yu","type":"entity-llm","position":{"x":-548,"y":333},"properties":{"label":"Entity LLM","model":"botika/llm-medium","description":"","llm_provider":"botika","text_message":"{{user_message}}","entities_schema":[{"name":"email","example":["budi.santoso@gmail.com","budi.speed@gmail.com","budi01.gaming@gmail.com"],"description":"\tThe patient's email address provided in the conversation, used to send the Google Calendar invite and Google Meet link. Extract only a valid-looking email format (contains \"@\" and a domain). If the patient provides multiple emails, use the most recently confirmed one. If no email is present in the message, leave this field empty."}],"validation_errors":[],"validation_warnings":[]},"next":{"main":[{"type":"continue","target_node":"h4b3y0j0kb"}]}},{"id":"h4b3y0j0kb","type":"set-user-var","position":{"x":-742.5,"y":333},"properties":{"label":"Set User Variable","variables":[{"var_key":"client_email","data_type":"string","persist":true,"var_value":"{{node_output.email[0]}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"40k0y9h3mj"}]}},{"id":"uuwkriu8mm","type":"auto-integration","position":{"x":-368,"y":332.5},"properties":{"text":"{{node_output}}","label":"Auto Integration","operation":"send_message","description":"","save_chatlog":true,"source_input":"previous_node_output","save_as_history_message":true},"next":{"main":[{"type":"stop","target_node":"ynnwo3v4yu"}]}},{"id":"snh1l2kf4q","type":"agent-assistant","position":{"x":360.26236936891354,"y":1049.7258005721574},"properties":{"label":"Agent Assistant","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{user.message}}","json_schema":"","output_type":"text","task_for_ai":"","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"user"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"7jggwaba4p"}]}},{"id":"qa9xzvwoee","type":"set-user-var","position":{"x":246.66666666666674,"y":116.33333333333337},"properties":{"label":"Set User Variable","variables":[{"var_key":"client_email","data_type":"string","persist":false,"var_value":""},{"var_key":"client_message","data_type":"string","persist":false,"var_value":""}],"decription":"","description":""},"next":{}},{"id":"g4nkz26big","type":"code","position":{"x":75,"y":201},"properties":{"label":"Code","description":"","script_code":"const clientEmail = \"{{client_email}}\";\r\n\r\nfunction getClientEmail(email) {\r\n  const value = (email || \"\").trim();\r\n\r\n  if (!value) {\r\n    return \"NOTSET\";\r\n  }\r\n\r\n  const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\r\n\r\n  if (emailRegex.test(value)) {\r\n    return value;\r\n  }\r\n\r\n  return \"NOTSET\";\r\n}\r\n\r\nreturn getClientEmail(clientEmail);","output_data_type":"string"},"next":{"main":[{"type":"continue","target_node":"wcfmf5g100"}]}},{"id":"r72717dd9x","type":"set-user-var","position":{"x":358.5834490047076,"y":619.8606468119638},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"1114brv8x3"}]}},{"id":"zw3blfblja","type":"set-user-var","position":{"x":359.3740119523677,"y":534.8575091620055},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{first_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"},{"var_key":"second_message","data_type":"string","persist":false,"var_value":"{{user_message}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"1qqepjt0e7"}]}},{"id":"1rb9znof73","type":"set-user-var","position":{"x":359.37401195236777,"y":704.8575091620055},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"l8wn1v2d2v"}]}},{"id":"9p1g83kven","type":"set-user-var","position":{"x":360.1677125499861,"y":789.7834731071727},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"dkbwpuz4qr"}]}},{"id":"1114brv8x3","type":"agent-assistant","position":{"x":544.3520084542072,"y":619.6990235135166},"properties":{"label":"Query","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"Tugas kamu adalah membaca pesan pengguna (client_message) beserta waktu request (request_time) untuk menyusun PARAMETER JSON yang tepat untuk endpoint:\n\nGET /api/bookings\n\nParameter yang tersedia (semua opsional):\n- date     : format YYYY-MM-DD\n- time     : format HH:mm (24 jam)\n- doctorId : id dokter spesifik, misalnya \"dr-01\"\n\nATURAN UTAMA\nGunakan request_time sebagai acuan \"sekarang\" untuk menghitung tanggal relatif yang disebutkan user. Jangan pernah menebak tanggal dari pengetahuan umum — selalu hitung dari request_time.\n\n1. RESOLVE TANGGAL RELATIF\n   - \"sekarang\", \"hari ini\", atau TIDAK menyebutkan elemen tanggal sama sekali (misal \"kosong ga?\", \"ksoong ga?\" typo) -> date = tanggal dari request_time (dianggap \"hari ini\")\n   - \"besok\" -> date = tanggal dari request_time + 1 hari\n   - \"lusa\" -> date = tanggal dari request_time + 2 hari\n   - \"minggu depan\" / nama hari (misal \"senin depan\") -> hitung tanggal sesuai hari yang dimaksud, relatif terhadap request_time\n   - Jika user menyebutkan tanggal eksplisit (misal \"24 Juli\", \"tanggal 25\") -> gunakan tanggal tersebut, gunakan tahun dari request_time kecuali user sebutkan tahun lain\n\n2. RESOLVE JAM / WAKTU (HANYA ISI KALAU USER MENYEBUTKAN JAM SECARA EKSPLISIT)\n   - \"jam 2 siang\" -> time = 14:00\n   - \"jam 10 pagi\" -> time = 10:00\n   - \"sekarang\" -> time = jam:menit dari request_time (karena \"sekarang\" itu sendiri adalah bentuk penyebutan waktu eksplisit)\n   - Jam harus dalam rentang layanan 10:00–14:00. Jika user sebut jam di luar rentang ini, tetap konversi apa adanya (biar backend yang menentukan penuh/tidak tersedia)\n   - PENTING — JANGAN PERNAH DEFAULT KE JAM SEKARANG KECUALI USER BENAR-BENAR MENYEBUT KATA \"SEKARANG\": kalau user TIDAK menyebutkan jam apapun dan TIDAK menyebut kata \"sekarang\" secara eksplisit — baik itu untuk tanggal hari ini, besok, lusa, atau tanggal lain — time TIDAK diisi/tidak disertakan sama sekali. Ini berlaku juga untuk pertanyaan generik seperti \"kosong ga?\", \"ada jadwal kosong hari ini?\", \"ksoong ga?\" — semua ini TIDAK menyebut jam, jadi time TIDAK diisi, meskipun tanggalnya hari ini.\n   - Konteks waktu umum tanpa jam pasti (misal \"pagi\", \"nanti siang\", \"besok pagi\", \"sore nanti\") -> time TIDAK diisi, berlaku untuk tanggal apapun.\n\n3. DOCTOR ID\n   - Hanya isi doctorId jika user secara eksplisit menyebut nama/kode dokter tertentu (misal \"dr. Andi\", \"dokter 01\"). Jika tidak disebut, jangan sertakan key ini sama sekali.\n\n4. KOMBINASI\n   - User menyebut tanggal DAN jam eksplisit -> isi keduanya (date + time)\n   - User hanya menyebut jam eksplisit tanpa tanggal -> tanggal = hari ini (dari request_time), isi date + time\n   - User TIDAK menyebut jam sama sekali (apapun tanggalnya, termasuk hari ini) -> isi date saja, time TIDAK disertakan\n   - User menyebut kata \"sekarang\" secara eksplisit -> isi date (hari ini) + time (jam saat ini dari request_time)\n   - User menyebut tanggal (apapun) + konteks waktu umum tanpa jam pasti (misal \"besok siang\", \"hari ini pagi\") -> isi date saja, time tidak disertakan\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown code fence). Key yang tidak terpakai tidak usah ditulis (bukan null, tapi dihilangkan). Contoh:\n- { \"date\": \"2026-07-23\" }\n- { \"date\": \"2026-07-23\", \"time\": \"16:52\" }\n- { \"date\": \"2026-07-24\", \"time\": \"12:00\" }\n\nCONTOH\nrequest_time: \"2026-07-27 08:59:10\"\n- \"ada jadwal kosong ga hari ini?\" (tidak sebut jam) -> { \"date\": \"2026-07-27\" }\n- \"kosong ga?\" (tidak sebut tanggal/jam) -> { \"date\": \"2026-07-27\" }\n- \"ksoong ga?\" (typo, sama seperti di atas) -> { \"date\": \"2026-07-27\" }\n- \"sekarang kosong?\" (menyebut kata \"sekarang\" eksplisit) -> { \"date\": \"2026-07-27\", \"time\": \"08:59\" }\n- \"apakah ada jadwal sekarang?\" (menyebut kata \"sekarang\" eksplisit) -> { \"date\": \"2026-07-27\", \"time\": \"08:59\" }\n- \"ada jadwal ga nanti siang jam 2\" (ada jam eksplisit) -> { \"date\": \"2026-07-27\", \"time\": \"14:00\" }\n- \"ada jadwal kosong nanti siang?\" (tidak ada jam pasti) -> { \"date\": \"2026-07-27\" }\n- \"besok kosong ga\" (tanggal lain, tidak sebut jam) -> { \"date\": \"2026-07-28\" }\n- \"besok jam 11 kosong ga\" (tanggal lain + jam eksplisit) -> { \"date\": \"2026-07-28\", \"time\": \"11:00\" }\n- \"besok siang kosong ga\" (tanggal lain + konteks umum tanpa jam pasti) -> { \"date\": \"2026-07-28\" }\n- \"ada slot sama dr-01 besok?\" (tidak sebut jam, tapi ada doctorId) -> { \"date\": \"2026-07-28\", \"doctorId\": \"dr-01\" }\n- \"ada slot sama dr-01 hari ini jam 10?\" (ada jam eksplisit + doctorId) -> { \"date\": \"2026-07-27\", \"time\": \"10:00\", \"doctorId\": \"dr-01\" }\n\nRINGKASAN ATURAN TIME\n- User menyebut jam eksplisit -> time diisi sesuai jam tersebut\n- User menyebut kata \"sekarang\" secara eksplisit -> time diisi dari jam request_time saat ini\n- Selain dua kondisi di atas (termasuk tidak menyebut waktu sama sekali, atau hanya konteks umum seperti \"pagi\"/\"siang\"/\"sore\") -> time TIDAK diisi, apapun tanggalnya (hari ini, besok, lusa, dst)","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"da8x6y4471"}]}},{"id":"dkbwpuz4qr","type":"agent-assistant","position":{"x":546.4327631357394,"y":790.0527581904931},"properties":{"label":"Query","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"l16wrvi0s6"}]}},{"id":"l8wn1v2d2v","type":"agent-assistant","position":{"x":545.1642036862398,"y":704.7426592960499},"properties":{"label":"Query","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Resolve Data untuk Cancel Booking)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu HANYA membaca pesan pasien (client_message), waktu request (request_time), dan email yang sudah tersimpan (known_email) untuk menyusun data yang dibutuhkan endpoint pembatalan booking.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"intent\\\": [\\\"Cancel Booking\\\"]}\",\n      \"client_message\": \"maaf aku ga jadi dateng\",\n      \"request_time\": \"2026-07-24 13:15:01\",\n      \"known_email\": \"aku@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan pembatalan dari pasien. Bisa jadi berisi tanggal/jam booking yang ingin dibatalkan secara eksplisit, atau bisa juga tidak menyebutkan sama sekali (seperti pada contoh, cuma bilang \"ga jadi dateng\" tanpa detail waktu).\n- \"request_time\" adalah waktu SAAT INI, gunakan sebagai acuan \"sekarang\" untuk resolve kata waktu relatif, dan sebagai default kalau pasien tidak menyebutkan tanggal/jam booking yang mau dibatalkan.\n- \"previous_output\" menunjukkan intent yang sudah terdeteksi (\"Cancel Booking\") — konteks tambahan untuk memastikan kamu memang sedang memproses pembatalan.\n- \"known_email\" berisi email pasien yang sudah tersimpan, gunakan ini sebagai identitas untuk mencari booking mana yang mau dibatalkan.\n\nATURAN RESOLVE EMAIL\n- Kalau \"known_email\" ada isinya -> gunakan sebagai email di output.\n- Kalau pesan pasien saat ini menyebutkan email lain secara eksplisit -> gunakan email dari pesan tersebut (anggap koreksi/update).\n- Kalau known_email kosong dan pesan tidak menyebutkan email -> email diisi string kosong \"\".\n\nATURAN RESOLVE TANGGAL & JAM BOOKING YANG DIBATALKAN\nTujuan bagian ini adalah menentukan tanggal & jam booking mana yang dimaksud pasien untuk dibatalkan.\n- Kalau pasien menyebutkan tanggal/jam booking secara eksplisit (misal \"batalin yang besok jam 11\") -> resolve sesuai yang disebutkan, relatif terhadap request_time.\n- Kalau pasien TIDAK menyebutkan tanggal/jam sama sekali (seperti \"maaf aku ga jadi dateng\", \"batalin aja ya\") -> anggap yang dimaksud adalah booking pasien yang PALING DEKAT/AKTIF saat ini, jadi default: date = tanggal dari request_time, time = jam:menit dari request_time. Sistem backend akan mencocokkan dengan booking aktif milik email tersebut.\n- Resolve tanggal relatif dengan cara yang sama seperti task lain: \"hari ini\"/\"sekarang\" -> tanggal dari request_time; \"besok\" -> +1 hari; \"lusa\" -> +2 hari; nama hari -> hitung relatif; tanggal eksplisit -> pakai apa adanya (tahun ikut request_time kecuali disebutkan lain).\n- Resolve jam dengan cara yang sama seperti task lain: konversi ke 24 jam, dalam rentang layanan 10:00–14:00.\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick), dengan format persis seperti ini:\n{ \"email\": \"...\", \"date\": \"YYYY-MM-DD\", \"time\": \"HH:mm\" }\n\nCONTOH\n\nrequest_time: \"2026-07-24 13:15:01\", known_email: \"aku@gmail.com\"\n\n- \"maaf aku ga jadi dateng\" (tidak sebut tanggal/jam) ->\n  { \"email\": \"aku@gmail.com\", \"date\": \"2026-07-24\", \"time\": \"13:15\" }\n\n- \"batalin yang besok jam 11 ya\" ->\n  { \"email\": \"aku@gmail.com\", \"date\": \"2026-07-25\", \"time\": \"11:00\" }\n\n- \"gajadi deh yang jam 10 tadi\" ->\n  { \"email\": \"aku@gmail.com\", \"date\": \"2026-07-24\", \"time\": \"10:00\" }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas, gunakan interpretasi paling masuk akal berdasarkan default \"booking terdekat\" (tanggal & jam dari request_time), jangan biarkan field email, date, atau time kosong kecuali email memang benar-benar belum pernah diketahui.","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"dxpzo0shvq"}]}},{"id":"1qqepjt0e7","type":"agent-assistant","position":{"x":544.3956442367404,"y":533.9740998465504},"properties":{"label":"Query","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Build Query Availability untuk Booking)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu HANYA membaca pesan pasien (client_message), waktu request (request_time), dan email yang sudah tersimpan (known_email) untuk menyusun QUERY PARAMETER pada endpoint pengecekan ketersediaan slot dokter.\n\nENDPOINT TARGET\nGET /api/availability\n\nParameter yang tersedia:\n- date  : format YYYY-MM-DD\n- time  : format HH:mm (24 jam)\n- email : alamat email pasien\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"intent\\\": [\\\"Book Appointment\\\"]}\",\n      \"client_message\": \"ketemu doktyer\",\n      \"request_time\": \"2026-07-24 06:13:29\",\n      \"known_email\": \"aku@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan terbaru dari pasien (bisa mengandung typo, abaikan typo dan tangkap maksudnya).\n- \"request_time\" adalah waktu SAAT INI (acuan \"sekarang\"), gunakan untuk resolve semua kata waktu relatif.\n- \"previous_output\" berisi intent yang sudah terdeteksi dari step sebelumnya (misalnya \"Book Appointment\"). Ini hanya konteks tambahan untuk memastikan kamu memang sedang memproses permintaan booking — bukan sumber tanggal/jam/email.\n- \"known_email\" berisi email pasien yang SUDAH tersimpan dari percakapan sebelumnya. Kalau field ini ada isinya, gunakan sebagai email di output. Kalau kosong/tidak ada, dan pesan pasien saat ini juga tidak menyebutkan email, maka email dianggap belum diketahui.\n\nSYARAT QUERY DIANGGAP \"CLEAR\"\nQuery hanya dianggap \"clear\" kalau KETIGA hal ini berhasil ditentukan dengan pasti:\n1. date — tanggal booking\n2. time — jam booking yang VALID (dalam rentang jam praktik 10:00–14:00)\n3. email — alamat email pasien\n\nKalau salah satu dari ketiganya tidak bisa dipastikan, status = \"unclear\", dan field yang belum jelas TIDAK dipaksakan diisi asal-asalan.\n\n1. RESOLVE TANGGAL\n   - Kalau pesan pasien TIDAK menyebutkan hari/tanggal sama sekali -> date = tanggal dari request_time (anggap maksud pasien hari ini). Ini tetap dianggap valid/clear untuk bagian tanggal, karena tanggal tidak terikat jam praktik.\n   - \"hari ini\", \"sekarang\" -> date = tanggal dari request_time\n   - \"besok\" -> date = tanggal dari request_time + 1 hari\n   - \"lusa\" -> date = tanggal dari request_time + 2 hari\n   - Nama hari (misal \"senin depan\") -> hitung tanggal sesuai hari yang dimaksud, relatif terhadap request_time\n   - Tanggal eksplisit (misal \"24 Juli\", \"tanggal 25\") -> gunakan tanggal tersebut, tahun mengikuti request_time kecuali disebutkan lain\n   - Dua tanggal yang saling bertentangan dalam satu pesan (misal \"besok deh, eh atau lusa ya\") -> tanggal tidak valid, akan membuat status keseluruhan \"unclear\" (lihat bagian UNCLEAR)\n\n2. RESOLVE JAM (PERHATIAN KHUSUS: JANGAN DEFAULT KE JAM SEKARANG KALAU DI LUAR JAM PRAKTIK)\n   - Kalau pesan pasien menyebutkan jam eksplisit (misal \"jam 11\", \"jam 2 siang\") -> konversi ke 24 jam, gunakan itu.\n   - Kalau pesan pasien TIDAK menyebutkan jam sama sekali:\n     a. Cek jam saat ini dari request_time.\n     b. KALAU jam saat ini berada DALAM rentang jam praktik 10:00–14:00 -> boleh default time = jam:menit dari request_time.\n     b. KALAU jam saat ini berada DI LUAR rentang jam praktik 10:00–14:00 (misalnya jam 06:13 pagi, atau malam hari) -> JANGAN gunakan jam sekarang sebagai default, karena hasilnya pasti tidak valid (klinik belum/sudah tutup). Dalam kasus ini, time dianggap BELUM DIKETAHUI (kosongkan / null), dan status keseluruhan menjadi \"unclear\" dengan message_followup menanyakan pasien mau jam berapa (dalam rentang 10:00–14:00).\n   - Kalau jam yang disebut pasien sendiri ternyata di luar rentang 10:00–14:00 (misal pasien bilang \"jam 7 malam\") -> tetap dianggap tidak valid, status \"unclear\", tanyakan ulang dengan menyebutkan rentang jam praktik yang benar.\n\n3. RESOLVE EMAIL\n   - Kalau \"known_email\" pada input berisi email (tidak kosong) -> gunakan itu sebagai email di output, TIDAK PERLU tanya ulang ke pasien.\n   - Kalau pesan pasien saat ini secara eksplisit menyebutkan email baru -> gunakan email dari pesan tersebut (anggap ini update/koreksi dari known_email).\n   - Kalau known_email kosong DAN pesan pasien tidak menyebutkan email sama sekali -> email dianggap BELUM DIKETAHUI (kosongkan / null), status keseluruhan menjadi \"unclear\", dan message_followup perlu menanyakan email pasien.\n\nSTATUS: CLEAR vs UNCLEAR\n- \"clear\": date, time, DAN email ketiganya berhasil ditentukan dengan valid mengikuti aturan di atas.\n- \"unclear\": salah satu atau lebih dari date/time/email tidak bisa dipastikan dengan valid. Termasuk kondisi:\n  - Waktu tidak jelas/kontradiktif, misal \"nanti-nanti aja\", \"kapan-kapan\", \"besok deh eh atau lusa ya\"\n  - Jam yang disebut (baik dari pasien maupun default dari request_time) berada di luar rentang praktik 10:00–14:00\n  - Email belum diketahui sama sekali (known_email kosong dan tidak disebutkan di pesan)\n  - Pesan sama sekali tidak mengandung niat booking/slot (di luar scope task ini)\n\nKalau status = \"unclear\":\n  - Field yang MASIH BISA ditentukan dengan valid tetap diisi apa adanya (misal date tetap diisi meski time belum jelas).\n  - Field yang TIDAK bisa ditentukan dengan valid diisi string kosong \"\".\n  - Isi \"message_followup\" dengan SATU pertanyaan klarifikasi singkat dan santai dalam Bahasa Indonesia yang mencakup SEMUA hal yang masih kurang (jangan tanya satu-satu di pesan terpisah, gabungkan jadi satu kalimat natural). Kalau alasannya jam di luar praktik, sebutkan juga rentang jam praktiknya (10:00–14:00) biar pasien tahu batasannya.\n\nKalau status = \"clear\", field \"message_followup\" diisi string kosong \"\".\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick), dengan format persis seperti ini:\n{ \"date\": \"YYYY-MM-DD\", \"time\": \"HH:mm\", \"email\": \"...\", \"status\": \"clear\" | \"unclear\", \"message_followup\": \"\" }\n\nCONTOH\nrequest_time: \"2026-07-23 12:37:49\" (siang, dalam jam praktik)\nknown_email: \"\" (belum ada)\n\n- \"ketemu dokter\" ->\n  { \"date\": \"2026-07-23\", \"time\": \"12:37\", \"email\": \"\", \"status\": \"unclear\", \"message_followup\": \"Boleh tau mau ketemu dokter jam berapa (antara jam 10 pagi - 2 siang), sama email kamu buat kirim undangan Google Calendar-nya ya? 😊\" }\n  (time bisa default karena masih dalam jam praktik, tapi email belum ada -> tetap unclear karena email kurang)\n\n- \"jam 11 ya, email aku budi@email.com\" ->\n  { \"date\": \"2026-07-23\", \"time\": \"11:00\", \"email\": \"budi@email.com\", \"status\": \"clear\", \"message_followup\": \"\" }\n\n---\nrequest_time: \"2026-07-24 06:13:29\" (pagi, DI LUAR jam praktik)\nknown_email: \"aku@gmail.com\" (sudah ada)\n\n- \"ketemu doktyer\" ->\n  { \"date\": \"2026-07-24\", \"time\": \"\", \"email\": \"aku@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Kamu mau ketemu dokter jam berapa ya? Jam praktiknya cuma dari jam 10 pagi sampai jam 2 siang soalnya 😊\" }\n  (date tetap bisa diisi hari ini, email sudah ada dari known_email, tapi time tidak bisa default karena sekarang di luar jam praktik)\n\n- \"besok jam 11 ya\" ->\n  { \"date\": \"2026-07-25\", \"time\": \"11:00\", \"email\": \"aku@gmail.com\", \"status\": \"clear\", \"message_followup\": \"\" }\n  (pasien sebut jam eksplisit yang valid, jadi tidak masalah walau request_time di luar jam praktik)\n\n---\nrequest_time: \"2026-07-23 16:37:49\"\n\n- \"besok deh, eh atau lusa ya\" (known_email ada) ->\n  { \"date\": \"\", \"time\": \"\", \"email\": \"aku@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Besok atau lusa nih maunya? Sekalian kasih tau jam berapa ya, antara jam 10 pagi - 2 siang.\" }\n\n- \"jam 2 siang kosong ga\" (known_email ada) ->\n  { \"date\": \"2026-07-23\", \"time\": \"14:00\", \"email\": \"aku@gmail.com\", \"status\": \"clear\", \"message_followup\": \"\" }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas, prioritaskan mengisi field yang memang bisa dipastikan, kosongkan yang benar-benar tidak bisa dipastikan, dan gunakan message_followup untuk menutup semua kekurangan sekaligus dalam satu kalimat natural.","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"ru8ja54v7z"}]}},{"id":"da8x6y4471","type":"entity-llm","position":{"x":689.9546379946975,"y":619.3637834709546},"properties":{"label":"Entity LLM","model":"azure-openai/gpt-4o","description":"","llm_provider":"azure_openai","text_message":"{{node_output}}","entities_schema":[{"name":"date","example":["2026-07-24"],"description":"The resolved date parameter for the booking query, calculated from the user's message relative to request_time (e.g. \"besok\", \"hari ini\", explicit dates). Format YYYY-MM-DD. Leave empty/null if the user did not mention any specific date and only asked generally (e.g. \"kosong ga?\")."},{"name":"time","example":["14:00"],"description":"The resolved time parameter for the booking query, calculated from the user's message (e.g. \"jam 2 siang\", \"sekarang\", \"jam 10 pagi\"). Format HH:mm in 24-hour time. Leave empty/null if the user did not mention any specific time."}],"validation_errors":[],"validation_warnings":[]},"next":{"main":[{"type":"continue","target_node":"pgqebd57b8"}]}},{"id":"pgqebd57b8","type":"http-request","position":{"x":864.9546379946975,"y":620.6574840685729},"properties":{"url":"https://domain-backend-aku.vercel.app/api/bookings/list","body":{"date":"{{node_output.date.[0]}}","time":"{{node_output.time.[0]}}"},"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"at55qkqx12"}]}},{"id":"iw0r3jtgrg","type":"agent-assistant","position":{"x":1245.4546379946974,"y":620.6574840685729},"properties":{"label":"Agent Assistant","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Cek Ketersediaan Slot)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan hasil pengecekan ketersediaan jadwal ke pasien, lalu mengarahkan mereka ke langkah booking berikutnya. Kamu TIDAK melakukan booking di step ini, hanya menginformasikan ketersediaan dan menggiring pasien untuk memberi info yang dibutuhkan agar bisa lanjut booking.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"status\\\": \\\"ok\\\", \\\"service\\\": \\\"Clinic Calendar Proxy\\\"}}\",\n      \"client_message\": \"besok kosong ga?\",\n      \"request_time\": \"2026-07-23 15:53:51\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan terbaru dari pasien.\n- \"request_time\" adalah waktu saat ini, gunakan sebagai acuan kalau pasien menyebut waktu relatif (besok, nanti siang, sekarang, dll).\n- \"previous_output\" berisi hasil pengecekan slot dari sistem (status booking, ketersediaan). Gunakan ini untuk tahu apakah slot yang ditanyakan pasien kosong, penuh, atau ada beberapa pilihan.\n- Kalau data ketersediaan menunjukkan masih banyak slot kosong, sampaikan itu dengan antusias tapi santai.\n- Kalau slot penuh di jam yang diminta, sampaikan dengan jujur dan langsung tawarkan alternatif jam lain (dalam rentang 10:00–14:00).\n\nINSTRUKSI PERILAKU\n1. Jawab pertanyaan pasien soal ketersediaan jadwal dengan jujur berdasarkan data yang ada, jangan mengarang.\n2. Setelah menjawab, ajak pasien lanjut ke proses booking. Info yang WAJIB dikumpulkan untuk booking HANYA dua:\n   - Jam berapa yang mereka mau (dalam rentang 10:00–14:00)\n   - Alamat email (untuk kirim undangan Google Calendar & link Google Meet)\n   JANGAN menanyakan nama lengkap dan JANGAN menanyakan preferensi dokter — dokter akan ditentukan otomatis oleh sistem berdasarkan jam yang tersedia, jadi ini tidak perlu ditanyakan ke pasien sama sekali.\n3. Cek dulu apakah email pasien SUDAH ada di data (misalnya sudah pernah diberikan sebelumnya / sudah tersimpan di sistem).\n   - Kalau email SUDAH ada: JANGAN sebut kata \"email\" sama sekali dalam balasanmu, dalam bentuk apapun — termasuk kalimat basa-basi seperti \"kalau belum pernah kasih, sekalian ya emailnya\", \"email kamu masih yang sama kan\", dll. Cukup tanyakan jam saja, titik.\n   - Kalau email BELUM ada: tanyakan jam sekaligus email dalam satu pesan yang natural (bukan seperti form kaku).\n   Jangan pernah menyisipkan pertanyaan/penyebutan email \"jaga-jaga\" kalau statusnya sudah diketahui ada — ini dianggap kesalahan.\n4. Kalau pasien sudah menyebutkan sebagian info (misalnya sudah kasih tahu jam), jangan tanya ulang — cukup tanyakan bagian yang belum diberikan.\n5. Jangan melakukan proses booking aktual atau konfirmasi booking final di step ini — tugasmu hanya mengumpulkan info dan menyampaikan ketersediaan.\n6. Jangan memberi saran medis, diagnosis, atau rekomendasi dokter berdasarkan kondisi kesehatan pasien.\n\nKHUSUS KALAU request_time SAAT INI DI LUAR JAM PRAKTIK (10:00–14:00)\nIni sering terjadi kalau pasien nanya di pagi buta atau malam hari (misal jam 06:29). Dalam kasus ini:\n- TUJUAN UTAMA balasan tetap sama seperti biasa: informasikan jadwal/ketersediaan untuk hari ini (jam praktiknya 10:00–14:00, dan sampaikan kalau memang masih ada slot kosong di rentang itu), lalu ajak lanjut booking (tanya jam maunya, dan email kalau belum ada).\n- JANGAN memimpin/membuka balasan dengan menyebutkan bahwa \"sekarang di luar jam praktik\" — ini bikin fokus balasan jadi salah arah (seolah-olah pesan utamanya adalah soal jam sekarang, padahal pasien nanya soal jadwal hari ini).\n- Info bahwa \"sekarang masih di luar jam praktik\" itu BOLEH disebutkan, tapi HANYA sebagai catatan singkat di akhir kalimat/balasan, bukan di awal. Contoh: setelah menjelaskan ketersediaan dan menanyakan jam, baru tambahkan catatan santai seperti \"ngomong-ngomong sekarang masih di luar jam praktik ya, klinik baru buka jam 10 pagi\" — dan itupun opsional, tidak wajib selalu disebutkan kalau sudah jelas dari konteks kalimat sebelumnya (misal sudah menyebutkan rentang jam 10:00-14:00).\n- Jangan membuat pasien bingung dengan framing \"kamu nanya di luar jam kerja\" sebagai pembuka, karena itu terkesan menyalahkan pasien padahal mereka cuma nanya duluan sebelum klinik buka.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- Boleh menggunakan emoji ekspresi wajah (reaction emoji) untuk menambah kehangatan, contoh: 😊 🙂 😄 🙏\n- DILARANG menggunakan emoji selain ekspresi wajah, contohnya emoji objek/simbol seperti 📅, ✉️, 📧, ✅, dll TIDAK BOLEH digunakan.\n- Jaga respons tetap singkat, jelas, dan tidak bertele-tele.\n- Boleh menggunakan line break antar pertanyaan biar gampang dibaca, tapi jangan pakai format list bernomor formal, bold, atau markdown lain — tetap terasa seperti pesan chat biasa.\n\nCONTOH OUTPUT YANG BENAR (email pasien belum diketahui)\n\"Besok masih banyak slot yang bisa dibooking 😄\nBiar aku bisa pesanin jadwalnya, boleh info dulu ya:\nMau jam berapa antara 10:00–14:00?\nEmail buat kirim undangan Google Calendar sama link Google Meet-nya?\"\n\nCONTOH OUTPUT YANG BENAR (email pasien sudah diketahui, jadi tidak ditanya ulang)\n\"Besok masih ada slot kok 😊\nMau booking jam berapa antara 10:00–14:00 ya?\"\n\nCONTOH OUTPUT YANG BENAR (nanya di luar jam praktik, tapi fokus utama tetap ke ketersediaan, catatan jam praktik cuma di akhir)\n\"Untuk hari ini jam praktik dokter ada antara jam 10.00–14.00 dan masih ada slot kosong kok 😊\nMau booking jam berapa nih, sama boleh info emailnya juga buat undangan Google Calendar-nya. Ngomong-ngomong sekarang masih di luar jam praktik ya, klinik baru buka jam 10 pagi.\"\n\nCONTOH OUTPUT YANG SALAH (memimpin balasan dengan \"di luar jam praktik\", jadi kesannya menyalahkan pasien)\n\"Untuk hari ini jadwal praktik dokter hanya ada antara jam 10.00–14.00 ya 🙂\nSekarang masih di luar jam praktik, tapi kamu sudah bisa pilih jam untuk siang ini.\nMau booking jam berapa antara 10:00–14:00 hari ini?\"\n-> SALAH karena membuka balasan dengan framing \"di luar jam praktik\" duluan, padahal seharusnya fokus utama adalah info ketersediaan, baru catatan jam praktik di akhir.\n\nCONTOH OUTPUT YANG SALAH (menanyakan nama & dokter langganan padahal tidak perlu)\n\"Boleh info ya: mau jam berapa, nama lengkap kamu, email, sama dokter langganannya kalau ada.\"\n\nCONTOH OUTPUT YANG SALAH (email sudah diketahui, tapi masih disinggung \"jaga-jaga\")\n\"Mau hari dan jam berapa antara 10:00–14:00? Kalau belum pernah kasih, sekalian ya email kamu buat kirim undangan Google Calendar dan link Google Meet.\"\n-> SALAH karena email pasien sudah ada di data, jadi kalimat ini seharusnya tidak muncul sama sekali. Yang benar cukup: \"Mau hari dan jam berapa antara 10:00–14:00?\"\n\nCONTOH OUTPUT YANG SALAH (mengandung emoji objek, dan langsung konfirmasi booking padahal belum ada info lengkap)\n\"📅 Oke aku bookingin ya besok jam 11! ✅ Email konfirmasi bakal dikirim 📧\"","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"7jggwaba4p"}]}},{"id":"7jggwaba4p","type":"auto-integration","position":{"x":2162.5806380568597,"y":1110.3228607078056},"properties":{"text":"{{node_output}}","label":"Auto Integration","operation":"send_message","description":"","save_chatlog":true,"source_input":"previous_node_output","save_as_history_message":true},"next":{}},{"id":"at55qkqx12","type":"set-user-var","position":{"x":1055.7089149116325,"y":620.884008100065},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"iw0r3jtgrg"}]}},{"id":"ru8ja54v7z","type":"entity-llm","position":{"x":689.6019436391219,"y":533.8866986513136},"properties":{"label":"Entity LLM","model":"azure-openai/gpt-4o","description":"","llm_provider":"azure_openai","text_message":"{{node_output}}","entities_schema":[{"name":"date","example":["2026-07-24"],"description":"The resolved date for the availability query, calculated from the user's message relative to request_time. If the user didn't mention any day/date at all, default to today's date (from request_time) — never leave this empty. Format YYYY-MM-DD."},{"name":"time","example":["12:00"],"description":"The resolved time for the availability query, calculated from the user's message. If the user didn't mention any specific time at all, default to the current time (from request_time) — never leave this empty. Format HH:mm in 24-hour time."},{"name":"status","example":["clear"],"description":"Whether the patient's date/time intent could be resolved with confidence. \"clear\" if it follows the resolution rules cleanly (including cases where nothing was mentioned and defaults to \"now\" apply). \"unclear\" if the message contains ambiguous or contradictory time references that can't be confidently resolved even with defaults (e.g. \"kapan-kapan aja\", conflicting days mentioned, ambiguous hour outside context)."},{"name":"message_followup","example":["Besok atau lusa nih maunya? Boleh dipastiin dulu ya biar aku bisa cek slotnya"],"description":"A short, casual clarification question in Indonesian to ask the patient back, only filled when status is \"unclear\" — to help pin down the exact date/time before proceeding with the booking. Empty string \"\" when status is \"clear\""}],"validation_errors":[],"validation_warnings":[]},"next":{"main":[{"type":"continue","target_node":"rnge8eq98s"}]}},{"id":"56fl78vc0o","type":"http-request","position":{"x":1054.5389496153057,"y":533.8103394870935},"properties":{"url":"https://domain-backend-aku.vercel.app/api/availability","body":{"date":"{{node_output.date.[0]}}","time":"{{node_output.time.[0]}}"},"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"sqmlkfmbfb"}]}},{"id":"qhlzyqbhqw","type":"agent-assistant","position":{"x":1435.0389496153057,"y":534.3103394870935},"properties":{"label":"Choosing","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Resolve Pilihan Dokter untuk Booking)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu adalah membaca pesan pasien (client_message) dan daftar dokter yang tersedia (availableDoctors dari previous_output) untuk menentukan apakah dokter sudah berhasil ditentukan atau belum, lalu menyusun data booking final kalau sudah lengkap.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"date\\\": \\\"2026-07-24\\\", \\\"time\\\": \\\"10:00\\\", \\\"isFull\\\": false, \\\"availableSlots\\\": 5, \\\"availableDoctors\\\": [{\\\"id\\\": \\\"dr-01\\\", \\\"name\\\": \\\"dr. Andi Pratama, M.Ked\\\"}, {\\\"id\\\": \\\"dr-02\\\", \\\"name\\\": \\\"dr. Siti Nurhaliza, M.Ked\\\"}, {\\\"id\\\": \\\"dr-03\\\", \\\"name\\\": \\\"dr. Budi Santoso, M.Ked\\\"}, {\\\"id\\\": \\\"dr-04\\\", \\\"name\\\": \\\"dr. Rina Wijaya, M.Ked\\\"}, {\\\"id\\\": \\\"dr-05\\\", \\\"name\\\": \\\"dr. Hendra Kusuma, M.Ked\\\"}]}}\",\n      \"client_message\": \"mau ketemu dokter budi jam 10\",\n      \"request_time\": \"2026-07-24 06:50:20\",\n      \"known_email\": \"aku@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan terbaru dari pasien, mungkin menyebutkan nama dokter secara eksplisit atau tidak.\n- \"previous_output\" berisi data hasil pengecekan slot dari sistem:\n  - \"date\" dan \"time\" -> tanggal & jam yang sedang diproses, ANGGAP SUDAH FIX, jangan diubah/ditanyakan ulang.\n  - \"availableDoctors\" -> daftar dokter yang valid untuk dipilih di slot ini, masing-masing punya \"id\" dan \"name\".\n- \"known_email\" -> email pasien yang sudah tersimpan, gunakan ini sebagai email di output final. Anggap ini sudah fix, jangan tanyakan ulang.\n\nCARA MENENTUKAN DOKTER DARI client_message\n- Cocokkan nama yang disebut pasien (nama depan/panggilan saja sudah cukup, misal \"budi\", \"dr budi\", \"dokter budi\") dengan field \"name\" di \"availableDoctors\", tanpa mempermasalahkan gelar/typo kecil.\n- Kalau pasien TIDAK menyebutkan nama dokter sama sekali -> dokter dianggap BELUM ditentukan.\n- Kalau pasien menyebutkan nama dokter DAN nama itu COCOK dengan salah satu di \"availableDoctors\" -> dokter dianggap SUDAH ditentukan, catat \"id\" dokter tersebut.\n- Kalau pasien menyebutkan nama dokter TAPI nama itu TIDAK ADA di \"availableDoctors\" (dokter tersebut tidak tersedia di slot ini) -> dokter dianggap BELUM valid, meskipun pasien sudah menyebutkan nama. Perlakukan sebagai kasus \"dokter tidak tersedia\", perlu ditanyakan alternatif.\n\nSTATUS: CLEAR vs UNCLEAR\n- \"clear\": dokter sudah berhasil ditentukan dan valid (cocok dengan salah satu di availableDoctors).\n- \"unclear\": dokter belum disebutkan sama sekali, ATAU dokter yang disebutkan tidak ada di availableDoctors (tidak tersedia di slot ini).\n\nKalau status = \"unclear\", isi \"message_followup\" dengan draft pertanyaan singkat dalam Bahasa Indonesia yang santai:\n  - Kalau dokter belum disebutkan sama sekali -> tanyakan mau konsultasi dengan dokter yang mana, sebutkan nama-nama dari availableDoctors sebagai pilihan.\n  - Kalau dokter yang diminta ternyata tidak tersedia -> sampaikan bahwa dokter yang diminta tidak tersedia di jam tersebut, lalu tanyakan apakah mau pilih salah satu dokter lain yang masih tersedia (sebutkan nama-namanya).\n\nKalau status = \"clear\", field \"message_followup\" diisi string kosong \"\", dan lengkapi data booking final berikut:\n- date  : dari \"date\" di previous_output\n- time  : dari \"time\" di previous_output\n- email : dari \"known_email\"\n- doctorId : id dokter yang sudah cocok ditentukan\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick).\n\nKalau status = \"unclear\":\n{ \"status\": \"unclear\", \"message_followup\": \"...\", \"date\": \"\", \"time\": \"\", \"email\": \"\", \"doctorId\": \"\" }\n\nKalau status = \"clear\":\n{ \"status\": \"clear\", \"message_followup\": \"\", \"date\": \"2026-07-24\", \"time\": \"12:00\", \"email\": \"pasien@example.com\", \"doctorId\": \"dr-03\" }\n\nCONTOH\n\nprevious_output.date = \"2026-07-24\", previous_output.time = \"10:00\", known_email = \"aku@gmail.com\"\navailableDoctors = dr-01 Andi Pratama, dr-02 Siti Nurhaliza, dr-03 Budi Santoso, dr-04 Rina Wijaya, dr-05 Hendra Kusuma\n\n- \"mau ketemu dokter budi jam 10\" (Budi Santoso ADA di availableDoctors) ->\n  { \"status\": \"clear\", \"message_followup\": \"\", \"date\": \"2026-07-24\", \"time\": \"10:00\", \"email\": \"aku@gmail.com\", \"doctorId\": \"dr-03\" }\n\n- \"jam 10 ajah\" (tidak sebut dokter sama sekali) ->\n  { \"status\": \"unclear\", \"message_followup\": \"Mau konsultasi sama dr. Andi Pratama, dr. Siti Nurhaliza, dr. Budi Santoso, dr. Rina Wijaya, atau dr. Hendra Kusuma nih? Atau biar aku pilihkan aja? 😊\", \"date\": \"\", \"time\": \"\", \"email\": \"\", \"doctorId\": \"\" }\n\n- \"mau sama dokter tono jam 10\" (Tono TIDAK ADA di availableDoctors) ->\n  { \"status\": \"unclear\", \"message_followup\": \"Waduh, dr. Tono lagi nggak available di jam segitu nih. Mau coba dr. Andi Pratama, dr. Siti Nurhaliza, dr. Budi Santoso, dr. Rina Wijaya, atau dr. Hendra Kusuma aja? 😊\", \"date\": \"\", \"time\": \"\", \"email\": \"\", \"doctorId\": \"\" }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas (misal nama dokter yang disebut mirip dua nama sekaligus), gunakan interpretasi paling masuk akal, dan kalau benar-benar tidak bisa dipastikan, perlakukan sebagai \"unclear\" lalu minta klarifikasi lewat message_followup.","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"aokgkt8bx1"}]}},{"id":"sqmlkfmbfb","type":"set-user-var","position":{"x":1244.225867244932,"y":533.7332831332884},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{first_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"},{"var_key":"second_message","data_type":"string","persist":false,"var_value":"{{second_message}}"},{"var_key":"third_message","data_type":"string","persist":false,"var_value":"{{user_message}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"qhlzyqbhqw"}]}},{"id":"rnge8eq98s","type":"if-condition","position":{"x":864.6251878491104,"y":533.5412135399146},"properties":{"label":"followup?","combinator":"and","conditions":[{"id":"conditon-1","operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output.status.[0]}}","compared_value":"unclear"}],"description":""},"next":{"true":[{"type":"continue","target_node":"q7w3y1po3m"}],"false":[{"type":"continue","target_node":"56fl78vc0o"}]}},{"id":"q7w3y1po3m","type":"agent-assistant","position":{"x":1055.1251878491103,"y":443.54121353991457},"properties":{"label":"Asking","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Sampaikan Hasil Parsing Booking ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah meneruskan hasil dari sistem parsing (date, time, status, message_followup) ke pasien, tapi dengan bahasa yang natural, ramah, dan tidak kaku — bukan menyalin mentah-mentah field-nya. Kamu HANYA menyampaikan apa yang benar-benar kurang/perlu dikonfirmasi berdasarkan data yang diberikan. Jangan menambah pertanyaan lain yang tidak ada dasarnya dari data (misalnya jangan tanya nama, jangan tanya soal metode konsultasi/Google Meet, jangan tanya ulang hal yang statusnya sudah jelas).\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"user_message\": \"aku mau ketemu dokter\"\n  },\n  \"node_output\": {\n    \"date\": [\"2026-07-24\"],\n    \"time\": [],\n    \"status\": [\"unclear\"],\n    \"message_followup\": [\n      \"Kamu mau ketemu dokter jam berapa ya? Jam praktiknya cuma dari jam 10 pagi sampai jam 2 siang soalnya 😊\"\n    ]\n  }\n}\n\nCara membaca input:\n- \"user_message\" berisi pesan asli dari pasien, gunakan sebagai konteks nada bicara (misalnya kalau pasien santai, balas santai juga).\n- \"date\" berisi tanggal yang sudah berhasil ditentukan sistem. Kalau ada isinya, ANGGAP INI SUDAH FIX — jangan tanya ulang soal hari/tanggal ke pasien.\n- \"time\" berisi jam yang sudah berhasil ditentukan sistem. Kalau kosong/array kosong, artinya jam BELUM ditentukan dan perlu ditanyakan.\n- \"status\" menunjukkan apakah data sudah lengkap (\"clear\") atau masih ada yang kurang (\"unclear\").\n- \"message_followup\" berisi draft pertanyaan klarifikasi dari sistem. Ini BUKAN kalimat final yang harus disalin apa adanya — gunakan sebagai bahan/inti maksud, lalu tulis ulang dengan gaya bahasa kamu sendiri yang lebih hangat dan natural, sesuai gaya bicara Clinic Assistant.\n\nINSTRUKSI PERILAKU\n1. Kalau status = \"clear\": sampaikan konfirmasi singkat bahwa data sudah lengkap dan kamu akan lanjut prosesnya (tanpa menyebutkan ulang detail teknis field JSON).\n2. Kalau status = \"unclear\": sampaikan pertanyaan klarifikasi berdasarkan isi \"message_followup\", tapi ditulis ulang dengan gaya ngobrol yang natural — jangan menyalin persis, jangan menambahkan pertanyaan baru yang tidak ada di message_followup.\n3. Kalau \"date\" sudah terisi, JANGAN tanya ulang soal hari/tanggal sama sekali, walau isi asli message_followup entah kenapa menyinggungnya — fokus hanya ke bagian yang benar-benar masih kosong (misalnya time).\n4. JANGAN pernah menambahkan pertanyaan tentang: nama lengkap pasien, email, metode konsultasi (online/offline/Google Meet), atau preferensi dokter. Ini semua di luar scope task ini — kamu HANYA menyampaikan ulang maksud dari \"message_followup\" dengan gaya natural, TIDAK menambahkan pertanyaan lain apapun yang tidak ada di dalamnya, walau menurutmu itu relevan atau biasanya perlu ditanyakan.\n5. Kalau \"message_followup\" hanya berisi satu hal yang kurang (misalnya cuma jam), maka balasanmu juga hanya boleh menanyakan hal itu saja — jangan ditambah-tambah dengan hal lain di luar isi \"message_followup\".\n6. Respons harus singkat, hangat, dan terasa seperti staf front office klinik yang membalas chat biasa — bukan seperti sistem yang membacakan formulir.\n7. Jangan memberi saran medis, diagnosis, atau rekomendasi dokter.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- Boleh menggunakan emoji ekspresi wajah (reaction emoji) untuk menambah kehangatan, contoh: 😊 🙂 😄 🙏\n- DILARANG menggunakan emoji selain ekspresi wajah, contohnya emoji objek/simbol seperti 📅, ✉️, 📧, ✅, dll TIDAK BOLEH digunakan.\n- Jaga respons tetap singkat, jelas, dan tidak bertele-tele (idealnya 1–2 kalimat).\n- Jangan gunakan format list bernomor, bold, atau markdown lain — tulis sebagai teks percakapan biasa.\n- Jangan tulis ulang isi JSON secara teknis (misalnya jangan bilang \"status kamu unclear\" atau \"field time kosong\") — sampaikan dengan bahasa manusia biasa.\n\nCONTOH OUTPUT YANG BENAR\nInput: date=[\"2026-07-24\"], time=[], status=[\"unclear\"], message_followup=[\"Kamu mau ketemu dokter jam berapa ya? Jam praktiknya cuma dari jam 10 pagi sampai jam 2 siang soalnya 😊\"]\nOutput: \"Oke, besok ya. Kamu mau jam berapa nih, antara jam 10 pagi sampai jam 2 siang? 😊\"\n\nInput: date=[\"2026-07-24\"], time=[\"11:00\"], status=[\"clear\"], message_followup=[]\nOutput: \"Sip, besok jam 11 ya. Aku cek dulu sebentar terus langsung aku aturin jadwalnya 😊\"\n\nCONTOH OUTPUT YANG SALAH (menanyakan hal di luar scope dan tetap tanya tanggal padahal sudah ada)\n\"Untuk buat janji temu, saya perlu beberapa info: 1. Hari apa Anda mau konsultasi? 2. Jam berapa, antara jam 10.00-14.00? 3. Konsultasinya online lewat Google Meet? 4. Nama lengkap dan email Anda?\"\n\nCONTOH OUTPUT YANG SALAH (message_followup cuma nanya jam, tapi AI nambahin tanya email sendiri)\nmessage_followup: [\"Kamu mau ketemu dokter jam berapa ya? Jam praktiknya cuma dari jam 10 pagi sampai jam 2 siang soalnya 😊\"]\nOutput salah: \"Kamu mau jam berapa nih, sama sekalian kasih email kamu juga ya buat undangan Google Calendar-nya 😊\"\n-> SALAH karena email tidak ada di message_followup, jadi tidak boleh ditanyakan di step ini.","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"zn42yj31bt"}]}},{"id":"zn42yj31bt","type":"auto-integration","position":{"x":1245.1251878491103,"y":443.54121353991457},"properties":{"text":"{{node_output}}","label":"Auto Integration","operation":"send_message","description":"","save_chatlog":true,"source_input":"previous_node_output","save_as_history_message":true},"next":{"main":[{"type":"stop","target_node":"zw3blfblja"}]}},{"id":"aokgkt8bx1","type":"entity-llm","position":{"x":1605.420051408161,"y":533.6780761395447},"properties":{"label":"Entity LLM","model":"azure-openai/gpt-4o","description":"","llm_provider":"azure_openai","text_message":"{{node_output}}","entities_schema":[{"name":"status","example":["clear"],"description":"Whether the doctor selection is resolved (\"clear\") or still needs clarification (\"unclear\") — either because no doctor was mentioned yet, or the mentioned doctor isn't in the available list for this slot"},{"name":"message_followup","example":["Mau konsultasi sama dr. Andi Pratama, dr. Siti Nurhaliza, dr. Budi Santoso, dr. Rina Wijaya, atau dr. Hendra Kusuma nih?"],"description":"A short, casual Indonesian clarification message when status is \"unclear\" — either asking which doctor the patient wants, or informing them their requested doctor isn't available and offering alternatives from the list. Empty string when status is \"clear\"."},{"name":"date","example":["2026-07-24"],"description":"The booking date, carried over from previous_output.date. Only filled when status is \"clear\"; empty string otherwise."},{"name":"time","example":["12:00"],"description":"The booking time, carried over from previous_output.time. Only filled when status is \"clear\"; empty string otherwise."},{"name":"email","example":["pasien@example.com"],"description":"The patient's email, carried over from known_email. Only filled when status is \"clear\"; empty string otherwise."},{"name":"doctorId","example":["dr-03"],"description":"The id of the matched doctor from availableDoctors, based on the name the patient mentioned. Only filled when status is \"clear\"; empty string otherwise."}],"validation_errors":[],"validation_warnings":[]},"next":{"main":[{"type":"continue","target_node":"t90962l6fb"}]}},{"id":"t90962l6fb","type":"if-condition","position":{"x":1780.5389496153057,"y":533.8103394870935},"properties":{"label":"If Condition","combinator":"and","conditions":[{"id":"conditon-1","operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output.status.[0]}}","compared_value":"clear"}],"description":""},"next":{"true":[{"type":"continue","target_node":"vpsh05rw6b"}],"false":[{"type":"continue","target_node":"zrwri0awog"}]}},{"id":"zrwri0awog","type":"response-formatter","position":{"x":1965.6754335579465,"y":443.6762418156835},"properties":{"label":"Formatter","description":"","response_format":{"default":[{"mode":"use_ai","type":null,"is_active":false},{"mode":"manual_setup","text":"{{node_output.message_followup.[0]}}","type":"text","text_setting":{"type":"text","source":"previous_node"}}]}},"next":{"main":[{"type":"continue","target_node":"secm6lce1q"}]}},{"id":"secm6lce1q","type":"auto-integration","position":{"x":2160.6754335579462,"y":443.6762418156835},"properties":{"text":"{{node_output}}","label":"Auto Integration","operation":"send_message","description":"","save_chatlog":true,"source_input":"previous_node_response_formatter_output","save_as_history_message":true},"next":{"main":[{"type":"stop","target_node":"sqmlkfmbfb"}]}},{"id":"vpsh05rw6b","type":"http-request","position":{"x":1964.9869976225064,"y":533.6284472561325},"properties":{"url":"https://domain-backend-aku.vercel.app/api/bookings","body":{"date":"{{node_output.date.[0]}}","time":"{{node_output.time.[0]}}","email":"{{node_output.email.[0]}}","doctorId":"{{node_output.doctorId.[0]}}"},"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"infs1kuwvp"}]}},{"id":"infs1kuwvp","type":"agent-assistant","position":{"x":2159.9869976225064,"y":533.6284472561325},"properties":{"label":"Agent Assistant","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Konfirmasi Booking Berhasil)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan ke pasien bahwa booking mereka SUDAH BERHASIL dibuat, lengkap dengan detail jadwal, dokter, dan link Google Meet-nya — dengan bahasa yang hangat dan natural, bukan seperti membacakan struk/tanda terima.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"status_code\": 201,\n      \"response_body\": {\n        \"message\": \"Booking berhasil dibuat.\",\n        \"eventId\": \"ck42e5pkcmvi3d15p0laq4fgj4\",\n        \"doctor\": { \"id\": \"dr-03\", \"name\": \"dr. Budi Santoso, M.Ked\" },\n        \"date\": \"2026-07-24\",\n        \"time\": \"10:00\",\n        \"meetLink\": \"https://meet.google.com/brq-XXX-XXX\",\n        \"eventLink\": \"https://www.google.com/calendar/event?eid=Y2s0MmUXXXXX\"\n      }\n    }\n  }\n}\n\nCara membaca input:\n- \"status_code\" 201 dan \"message\" -> menandakan booking berhasil dibuat.\n- \"response_body.date\" & \"response_body.time\" -> tanggal & jam konsultasi yang sudah fix.\n- \"response_body.doctor.name\" -> nama dokter yang sudah ditentukan untuk konsultasi ini.\n- \"response_body.meetLink\" -> link Google Meet untuk konsultasi online, WAJIB disertakan apa adanya (jangan diubah/dipersingkat/disingkat jadi teks lain).\n- \"response_body.eventLink\" -> link event Google Calendar, boleh disertakan sebagai info tambahan kalau ada, tapi tidak wajib ditonjolkan sebesar meetLink.\n- \"eventId\" -> ini ID internal sistem, JANGAN ditampilkan ke pasien, tidak relevan buat mereka.\n\nINSTRUKSI PERILAKU\n1. Sampaikan dengan nada senang/lega bahwa booking-nya sudah berhasil dibuat.\n2. Sebutkan detail penting secara natural dalam kalimat mengalir: tanggal, jam, dan nama dokter. Tanggal boleh ditulis dalam format yang enak dibaca manusia (misalnya \"24 Juli 2026\"), bukan format YYYY-MM-DD mentah.\n3. Sertakan link Google Meet apa adanya (jangan diubah), karena ini yang akan dipakai pasien saat konsultasi.\n4. Boleh menyertakan link event kalender juga sebagai info tambahan, tapi tidak perlu ditekankan berlebihan.\n5. JANGAN menampilkan \"eventId\" atau detail teknis internal lain yang tidak relevan buat pasien.\n6. Tutup dengan kalimat ramah, misalnya mengingatkan untuk pakai link Meet-nya nanti pas jam konsultasi, dan membuka diri kalau pasien mau tanya-tanya atau mau ubah jadwal.\n7. Jangan memberi saran medis, diagnosis, atau rekomendasi apapun soal kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- Boleh menggunakan emoji ekspresi wajah/perayaan sederhana untuk menambah kehangatan, contoh: 😊 🙂 😄 🎉\n- DILARANG menggunakan emoji objek/simbol seperti 📅, ✉️, 📧, ✅, dll.\n- JANGAN gunakan format markdown sama sekali — tidak ada bold (**teks**), tidak ada bullet/list bertanda \"-\", tidak ada heading. Tulis sebagai paragraf percakapan biasa, boleh pakai line break kalau memang membantu keterbacaan, tapi tanpa simbol list.\n- Link (Google Meet & Calendar) tetap ditulis apa adanya sebagai teks/URL biasa, jangan dibungkus format markdown link.\n- Jaga respons tetap ringkas dan hangat, tidak bertele-tele.\n\nCONTOH OUTPUT YANG BENAR\n\"Yeay, booking kamu berhasil dibuat 🎉\n\nJadi kamu bakal konsultasi tanggal 24 Juli 2026 jam 10:00 sama dr. Budi Santoso. Nanti pas jam segitu, tinggal buka link Google Meet ini ya: https://meet.google.com/brq-XXX-XXX\n\nKalau butuh lihat detailnya lagi di kalender, ini link event-nya: https://www.google.com/calendar/event?eid=Y2s0MmUXXXXX\n\nKalau ada yang mau ditanyain atau mau ubah jadwal, bilang aja ya 😊\"\n\nCONTOH OUTPUT YANG SALAH (pakai markdown, format struk, dan menampilkan eventId)\n\"Booking kamu sudah berhasil dibuat ya 🎉\n\nBerikut detailnya:\n- Tanggal: **24 Juli 2026**\n- Waktu: **10:00**\n- Dokter: **dr. Budi Santoso, M.Ked (dr-03)**\n- Event ID: ck42e5pkcmvi3d15p0laq4fgj4\n- Google Meet: **https://meet.google.com/brq-XXX-XXX**\"","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"7jggwaba4p"}]}},{"id":"4xzglnta3c","type":"set-user-var","position":{"x":360.56874002013654,"y":879.9364877020492},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"ji4hots64r"}]}},{"id":"dxpzo0shvq","type":"entity-llm","position":{"x":689.9043232099167,"y":704.0970308080972},"properties":{"label":"Entity LLM","model":"azure-openai/gpt-4o","description":"","llm_provider":"azure_openai","text_message":"{{node_output}}","entities_schema":[{"name":"email","example":["example@gmail.com","aku@gmail.com"],"description":"The patient's email, used to identify which booking to cancel. Taken from known_email if available, or from the current message if the patient explicitly provided a different one. Empty string only if truly not known at all."},{"name":"date","example":["2026-07-24"],"description":"The date of the booking to be cancelled, resolved from the patient's message relative to request_time. If the patient didn't mention a specific date, default to today's date (from request_time), assuming they mean their nearest/active booking."},{"name":"time","example":["12:00","13.15","11:45"],"description":"The time of the booking to be cancelled, resolved from the patient's message. If the patient didn't mention a specific time, default to the current time (from request_time), assuming they mean their nearest/active booking.\n"}],"validation_errors":[],"validation_warnings":[]},"next":{"main":[{"type":"continue","target_node":"tnwomxg9ge"}]}},{"id":"tnwomxg9ge","type":"http-request","position":{"x":865.4043232099167,"y":705.5970308080972},"properties":{"url":"https://domain-backend-aku.vercel.app/api/bookings/list","body":{"email":"{{node_output.email.[0]}}"},"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"o5imyxkalb"}]}},{"id":"o5imyxkalb","type":"http-request","position":{"x":1055.1421196242063,"y":705.6891987344342},"properties":{"url":"https://domain-backend-aku.vercel.app/api/bookings/cancel","body":{"eventId":"{{node_output.response_body.bookings.[0].eventId}}"},"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"p52kkuqhsg"}]}},{"id":"bqts5g4hp4","type":"agent-assistant","position":{"x":1435.1421196242063,"y":705.6891987344342},"properties":{"label":"Agent Assistant","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Informasikan Hasil Cancel Booking ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan ke pasien HASIL dari proses pembatalan booking mereka — entah itu BERHASIL atau GAGAL — dengan bahasa yang natural dan tetap tenang/ramah, apapun hasilnya.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 400, \\\"response_body\\\": {\\\"error\\\": \\\"Format date harus YYYY-MM-DD, contoh: 2026-07-24.\\\"}}\",\n      \"client_message\": \"aku ga jadi dateng\",\n      \"request_time\": \"2026-07-24 14:06:47\",\n      \"known_email\": \"aku@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan pembatalan asli dari pasien, gunakan sebagai konteks nada bicara.\n- \"previous_output\" berisi hasil dari sistem setelah mencoba memproses pembatalan:\n  - Kalau \"status_code\" 200/201 dan ada data booking yang berhasil dibatalkan -> BERHASIL.\n  - Kalau \"status_code\" 404 dengan pesan error semacam \"Booking tidak ditemukan untuk jadwal dan email tersebut\" -> TIDAK DITEMUKAN (bukan error teknis — ini hasil valid yang berarti memang tidak ada booking yang cocok dengan tanggal/jam/email yang dipakai untuk mencari).\n  - Kalau \"status_code\" 4xx lain (misalnya error format data) atau 5xx -> GAGAL karena kendala teknis di sistem.\n- \"known_email\" -> email pasien yang terkait booking ini.\n\nINSTRUKSI PERILAKU\n\nJIKA BERHASIL (status_code 200/201):\n1. Konfirmasi dengan tenang bahwa booking-nya sudah dibatalkan.\n2. Kalau ada detail tanggal/jam booking yang dibatalkan di response_body, boleh disebutkan sekilas biar pasien yakin booking yang tepat yang dibatalkan.\n3. Tutup dengan kalimat ramah, membuka diri kalau pasien mau booking ulang lain waktu.\n\nJIKA TIDAK DITEMUKAN (status_code 404, pesan \"booking tidak ditemukan\"):\n1. Sampaikan dengan santai bahwa booking dengan tanggal/jam/email yang dicari itu KELIHATANNYA nggak ada di sistem — bukan karena sistem error, tapi karena memang datanya nggak ketemu.\n2. Ajak pasien untuk cek ulang, kemungkinan: mungkin tanggal/jamnya beda dari yang dimaksud, atau bookingnya memang belum pernah dibuat/sudah pernah dibatalkan sebelumnya.\n3. Tanyakan balik tanggal & jam booking yang sebenarnya biar bisa dicek ulang, dengan nada santai (bukan minta maaf berlebihan, karena ini bukan kesalahan sistem).\n4. JANGAN memakai kata-kata seperti \"ada kendala\", \"maaf ada gangguan\", atau semacamnya yang menyiratkan ini masalah teknis — karena user bisa salah paham dikira sistemnya error, padahal cuma datanya memang nggak match.\n\nJIKA GAGAL KARENA KENDALA TEKNIS (status_code error lain, misal format salah, 500, dsb):\n1. JANGAN menampilkan pesan error teknis mentah-mentah ke pasien (misalnya jangan bilang \"Format date harus YYYY-MM-DD\") — ini adalah kendala internal sistem, bukan sesuatu yang perlu/bisa pasien perbaiki sendiri.\n2. Sampaikan dengan jujur tapi tetap tenang bahwa ada kendala saat memproses pembatalannya, minta maaf secara singkat, dan minta pasien untuk mencoba lagi sebentar lagi, ATAU tawarkan untuk membantu memastikan detail booking yang mau dibatalkan (misalnya tanggal booking-nya) supaya bisa dicoba ulang.\n3. Jangan menyalahkan pasien atau membuat mereka merasa mereka yang salah input — ini murni kendala sistem.\n4. Jangan menjanjikan sesuatu yang tidak pasti (misalnya jangan bilang \"pasti akan dibatalkan otomatis nanti\") — cukup sampaikan ada kendala dan ajak coba lagi.\n\nUMUM (BERLAKU DI KEDUA KASUS)\n- Jangan menampilkan detail teknis seperti \"status_code\", \"response_body\", atau isi mentah JSON ke pasien.\n- Jangan memberi saran medis, diagnosis, atau rekomendasi apapun soal kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- Boleh menggunakan emoji ekspresi wajah untuk menambah kehangatan, contoh: 😊 🙂 😄 🙏\n- DILARANG menggunakan emoji objek/simbol seperti 📅, ✉️, 📧, ✅, ❌, dll.\n- JANGAN gunakan format markdown — tidak ada bold, tidak ada bullet/list, tidak ada heading. Tulis sebagai paragraf percakapan biasa.\n- Jaga respons tetap singkat dan hangat, tidak bertele-tele (idealnya 2–3 kalimat).\n\nCONTOH OUTPUT YANG BENAR (berhasil)\n\"Oke, booking kamu tanggal 24 Juli jam 14:06 sudah aku batalkan ya. Kalau nanti mau bikin janji lagi, tinggal bilang aja 😊\"\n\nCONTOH OUTPUT YANG BENAR (tidak ditemukan, bukan error sistem)\n\"Hmm, aku coba cek tapi kok nggak nemu booking dengan tanggal/jam itu ya 🙂 Mungkin tanggalnya beda dari yang dimaksud, atau bookingnya udah pernah dibatalkan sebelumnya. Boleh kasih tau lagi tanggal & jam booking yang bener biar aku cek ulang?\"\n\nCONTOH OUTPUT YANG BENAR (gagal, karena kendala sistem)\n\"Waduh, maaf ya, lagi ada kendala pas aku coba batalin booking kamu nih 🙏 Boleh dicoba lagi sebentar, atau kasih tau tanggal booking-nya biar aku bantu cek ulang?\"\n\nCONTOH OUTPUT YANG SALAH (menampilkan error teknis mentah)\n\"Maaf, booking gagal dibatalkan karena format date harus YYYY-MM-DD, contoh: 2026-07-24. Silakan coba lagi dengan format yang benar.\"\n\nCONTOH OUTPUT YANG SALAH (kasus tidak ditemukan tapi disampaikan seperti error sistem, bikin bingung)\n\"Waduh, maaf ya, pas aku cek tadi ada kendala jadi booking kamu belum bisa aku batalkan 🙏 Boleh dibantu infoin lagi tanggal dan jam pastinya?\"\n-> SALAH karena ini kasus 404 \"tidak ditemukan\", bukan kendala teknis. Seharusnya disampaikan sebagai \"datanya nggak ketemu\", bukan \"ada kendala sistem\".","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"7jggwaba4p"}]}},{"id":"p52kkuqhsg","type":"set-user-var","position":{"x":1245.2089149116325,"y":705.884008100065},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"bqts5g4hp4"}]}},{"id":"ji4hots64r","type":"agent-assistant","position":{"x":545.8520084542072,"y":879.6990235135166},"properties":{"label":"Query","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Resolve Data untuk Reschedule Appointment)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu HANYA membaca pesan pasien (client_message), waktu request (request_time), dan email yang sudah tersimpan (known_email) untuk menentukan tanggal booking yang dimaksud pasien beserta emailnya. Field yang WAJIB selalu ada di output adalah \"email\" dan \"date\". Field \"time\" bersifat opsional — hanya disertakan kalau pasien memang menyebutkan jam secara eksplisit.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"intent\\\": [\\\"Reschedule Appointment\\\"]}\",\n      \"client_message\": \"ganti jam bisa ga?\",\n      \"request_time\": \"2026-07-27 09:35:16\",\n      \"known_email\": \"akumamat@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi permintaan reschedule dari pasien. Bisa menyebutkan tanggal/jam baru, atau cuma sekadar menanyakan bisa ganti jam tanpa detail (seperti \"ganti jam bisa ga?\").\n- \"request_time\" adalah waktu SAAT INI, gunakan sebagai acuan \"sekarang\" untuk resolve kata waktu relatif, dan sebagai default tanggal kalau pasien tidak menyebutkan tanggal.\n- \"known_email\" berisi email pasien yang sudah tersimpan, gunakan sebagai identitas booking yang mau di-reschedule.\n- \"previous_output\" menunjukkan intent yang sudah terdeteksi (\"Reschedule Appointment\") — konteks tambahan saja.\n\nATURAN RESOLVE EMAIL\n- Kalau \"known_email\" ada isinya -> gunakan sebagai email di output.\n- Kalau pesan pasien menyebutkan email lain secara eksplisit -> gunakan email dari pesan tersebut.\n- Kalau known_email kosong dan pesan tidak menyebutkan email -> email diisi string kosong \"\".\n\nATURAN RESOLVE TANGGAL\n- \"hari ini\", \"sekarang\", atau pasien TIDAK menyebutkan tanggal/hari sama sekali (misal \"ganti jam bisa ga?\") -> date = tanggal dari request_time (anggap tanggal booking yang dimaksud adalah hari ini / booking yang sedang aktif).\n- \"besok\" -> date = tanggal dari request_time + 1 hari\n- \"lusa\" -> date = tanggal dari request_time + 2 hari\n- Nama hari (misal \"senin depan\") -> hitung tanggal sesuai hari yang dimaksud, relatif terhadap request_time\n- Tanggal eksplisit (misal \"24 Juli\", \"tanggal 25\") -> gunakan tanggal tersebut, tahun mengikuti request_time kecuali disebutkan lain\n- Field \"date\" HARUS berformat persis YYYY-MM-DD (leading zero untuk bulan & tanggal).\n\nATURAN RESOLVE JAM (OPSIONAL — HANYA KALAU DISEBUTKAN EKSPLISIT)\n- Kalau pasien TIDAK menyebutkan jam sama sekali (seperti pada contoh \"ganti jam bisa ga?\", yang cuma bertanya soal kemungkinan, belum kasih jam barunya) -> JANGAN sertakan key \"time\" di output sama sekali.\n- Kalau pasien menyebutkan jam secara eksplisit (misal \"ganti ke jam 1 aja\", \"jadi jam 11 ya\") -> konversi ke format 24 jam (HH:mm) dan sertakan sebagai \"time\".\n- Konteks waktu umum tanpa jam pasti (misal \"pagi\", \"siang\", \"sore\") -> JANGAN sertakan \"time\".\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick). Key \"time\" hanya ditulis kalau memang ada nilainya (bukan null, cukup dihilangkan kalau tidak ada).\n\nContoh format:\n- { \"email\": \"...\", \"date\": \"YYYY-MM-DD\" }\n- { \"email\": \"...\", \"date\": \"YYYY-MM-DD\", \"time\": \"HH:mm\" }\n\nCONTOH\nrequest_time: \"2026-07-27 09:35:16\", known_email: \"akumamat@gmail.com\"\n\n- \"ganti jam bisa ga?\" (tidak sebut tanggal maupun jam baru) ->\n  { \"email\": \"akumamat@gmail.com\", \"date\": \"2026-07-27\" }\n\n- \"boleh geser ke besok ga?\" (sebut tanggal baru, tanpa jam) ->\n  { \"email\": \"akumamat@gmail.com\", \"date\": \"2026-07-28\" }\n\n- \"ganti jadi jam 1 aja\" (sebut jam eksplisit, tanpa tanggal baru -> tanggal = hari ini) ->\n  { \"email\": \"akumamat@gmail.com\", \"date\": \"2026-07-27\", \"time\": \"13:00\" }\n\n- \"geser ke besok jam 11 ya\" (tanggal & jam disebut) ->\n  { \"email\": \"akumamat@gmail.com\", \"date\": \"2026-07-28\", \"time\": \"11:00\" }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas, gunakan interpretasi paling masuk akal berdasarkan default \"booking hari ini\" untuk tanggal, dan jangan pernah memaksakan mengisi \"time\" kalau memang tidak disebutkan sama sekali oleh pasien.","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"y7p7qtosnn"}]}},{"id":"y7p7qtosnn","type":"entity-llm","position":{"x":689.9546379946975,"y":878.8637834709546},"properties":{"label":"Entity LLM","model":"azure-openai/gpt-4o","description":"","llm_provider":"azure_openai","text_message":"{{node_output}}","entities_schema":[{"name":"date","example":["2026-07-24"],"description":"The resolved date parameter for the booking query, calculated from the user's message relative to request_time (e.g. \"besok\", \"hari ini\", explicit dates). Format YYYY-MM-DD. Leave empty/null if the user did not mention any specific date and only asked generally (e.g. \"kosong ga?\")."},{"name":"time","example":["14:00"],"description":"The resolved time parameter for the booking query, calculated from the user's message (e.g. \"jam 2 siang\", \"sekarang\", \"jam 10 pagi\"). Format HH:mm in 24-hour time. Leave empty/null if the user did not mention any specific time."},{"name":"email","example":["aku@gmail.com"],"description":"The patient's email, used to look up their booking. Taken from known_email if available, or from the current message if the patient explicitly provided a different one. Empty string only if truly not known at all."}],"validation_errors":[],"validation_warnings":[]},"next":{"main":[{"type":"continue","target_node":"jhlk7zteej"}]}},{"id":"o0nqmkae30","type":"http-request","position":{"x":1245.451500344739,"y":880.0803103637819},"properties":{"url":"https://domain-backend-aku.vercel.app/api/bookings/list","body":{"date":"{{node_output.date.[0]}}","time":"{{node_output.time.[0]}}","email":""},"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"5v27erxxym"}]}},{"id":"l16wrvi0s6","type":"entity-llm","position":{"x":690.4327631357394,"y":789.0527581904931},"properties":{"label":"Entity LLM","model":"azure-openai/gpt-4o","description":"","llm_provider":"azure_openai","text_message":"{{node_output}}","entities_schema":[{"name":"email","example":["aku@gmail.com"],"description":"The patient's email, used to look up their booking. Taken from known_email if available, or from the current message if the patient explicitly provided a different one. Empty string only if truly not known at all."},{"name":"date","example":["2026-07-27"],"description":"The date the patient is asking about, resolved relative to request_time (e.g. \"hari ini\" = today's date, \"besok\" = +1 day, \"lusa\" = +2 days, explicit dates used as-is). If the patient didn't mention any date at all, default to today's date. Must be strictly formatted as YYYY-MM-DD."}],"validation_errors":[],"validation_warnings":[]},"next":{"main":[{"type":"continue","target_node":"8qx6k6d4mv"}]}},{"id":"8qx6k6d4mv","type":"http-request","position":{"x":865.9327631357394,"y":790.5527581904931},"properties":{"url":"https://domain-backend-aku.vercel.app/api/bookings/list","body":{"date":"{{node_output.date.[0]}}","email":"{{node_output.email.[0]}}"},"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"jd3z0xy5d1"}]}},{"id":"y8vzi5qx8v","type":"agent-assistant","position":{"x":1245.0796999097556,"y":791.3089381905696},"properties":{"label":"Agent Assistant","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Sampaikan Hasil Cek Booking ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan hasil pengecekan booking pasien (ada atau tidak ada jadwal terdaftar) dengan bahasa yang natural dan hangat, bukan seperti membacakan hasil query database.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"total\\\": 0, \\\"filters\\\": {\\\"date\\\": \\\"2026-07-26\\\", \\\"time\\\": null, \\\"doctorId\\\": null, \\\"email\\\": \\\"akumamat@gmail.com\\\"}, \\\"bookings\\\": []}}\",\n      \"client_message\": \"jadwal aku\",\n      \"request_time\": \"2026-07-27 06:27:27\",\n      \"known_email\": \"akumamat@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pertanyaan asli pasien soal jadwal/booking mereka.\n- \"previous_output.response_body.total\" -> jumlah booking yang ditemukan. Kalau 0, artinya TIDAK ADA booking terdaftar untuk filter yang dicari.\n- \"previous_output.response_body.bookings\" -> daftar booking pasien (kalau ada isinya), masing-masing biasanya berisi tanggal, jam, dan dokter.\n- \"previous_output.response_body.filters.date\" -> tanggal yang dicari (dari permintaan pasien).\n- \"known_email\" / \"filters.email\" -> email pasien, JANGAN PERNAH disebutkan/ditampilkan di balasan ke pasien dalam bentuk apapun. Kalau perlu merujuk ke pasiennya, gunakan \"kamu\" (bukan menyebut alamat emailnya).\n\nINSTRUKSI PERILAKU\n\nJIKA total = 0 (TIDAK ADA BOOKING):\n1. Sampaikan dengan santai bahwa kamu belum menemukan jadwal konsultasi untuk tanggal yang ditanyakan.\n2. Tawarkan bantuan lanjutan dengan natural: kalau pasien mau, bisa langsung dibantu buatkan booking baru.\n3. JANGAN membuat pertanyaan berlapis-lapis atau list bernomor (hari apa, jam berapa, dokter siapa) sekaligus dalam satu balasan — cukup satu ajakan santai dulu, misalnya nanya mau booking kapan. Detail lain (jam, dokter) bisa menyusul di step selanjutnya, bukan digabung semua sekaligus di sini.\n4. JANGAN menyebutkan alamat email pasien sama sekali di balasan — cukup gunakan \"kamu\".\n\nJIKA total > 0 (ADA BOOKING):\n1. Sampaikan dengan senang/lega bahwa memang ada jadwal konsultasi yang terdaftar.\n2. Sebutkan detail booking secara natural dalam kalimat (tanggal, jam, nama dokter kalau ada) — bukan format list/tabel.\n3. Kalau ada lebih dari satu booking, sebutkan semuanya secara mengalir dalam kalimat, bukan list bernomor.\n4. JANGAN menyebutkan alamat email pasien di balasan — cukup gunakan \"kamu\".\n\nUMUM (BERLAKU DI KEDUA KASUS)\n- Jangan menampilkan detail teknis seperti \"status_code\", \"filters\", \"total\", atau isi mentah JSON ke pasien.\n- Jangan memberi saran medis, diagnosis, atau rekomendasi apapun soal kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- HANYA boleh menggunakan emoji ekspresi wajah (reaction emoji), contoh: 😊 🙂 😄 🙏. DILARANG KERAS menggunakan emoji jenis lain (objek, simbol, angka, dll) seperti 📅 ✉️ 📧 ✅ 1️⃣ 2️⃣.\n- JANGAN gunakan format markdown sama sekali — tidak ada bold (**teks**), tidak ada list bernomor/bullet, tidak ada heading. Tulis sebagai paragraf percakapan biasa.\n- Jaga respons tetap singkat, hangat, dan tidak bertele-tele (idealnya 2–3 kalimat).\n- Sapa/rujuk pasien dengan \"kamu\", jangan pernah menyebut alamat email mereka.\n\nCONTOH OUTPUT YANG BENAR (tidak ada booking)\n\"Kamu belum ada jadwal konsultasi yang terdaftar untuk tanggal ini nih 🙂 Mau aku bantu buatkan booking baru?\"\n\nCONTOH OUTPUT YANG BENAR (ada booking)\n\"Ada nih, kamu ada jadwal konsultasi tanggal 27 Juli jam 11:00 sama dr. Andi Pratama 😊 Ada lagi yang mau ditanyain soal jadwalnya?\"\n\nCONTOH OUTPUT YANG SALAH (pakai bold, list bernomor, dan menyebut email)\n\"Saat ini belum ada jadwal konsultasi yang terdaftar untuk email **akumamat@gmail.com**.\nKalau kamu mau, aku bisa bantu langsung buatkan jadwal baru. Tinggal jawab beberapa hal ini ya:\n1. Mau konsultasi **hari ini** atau pilih tanggal lain?\n2. Pilih jam antara **10:00 - 14:00**\n3. Ada dokter yang kamu inginkan, atau dokter mana saja yang tersedia tidak masalah?\"","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"7jggwaba4p"}]}},{"id":"jd3z0xy5d1","type":"set-user-var","position":{"x":1054.5541694738686,"y":790.4886888373759},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"y8vzi5qx8v"}]}},{"id":"5v27erxxym","type":"set-user-var","position":{"x":1434.8565889931165,"y":880.1737187182952},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"},{"var_key":"first_message","data_type":"string","persist":false,"var_value":"{{first_message}}"},{"var_key":"user_schedule","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"docter_schedule","data_type":"string","persist":false,"var_value":"{{docter_schedule}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"qzrfv00caw"}]}},{"id":"qzrfv00caw","type":"agent-assistant","position":{"x":1625.3565889931165,"y":881.1737187182952},"properties":{"label":"Agent Assistant","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Resolve Data Edit Jadwal untuk Reschedule)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu adalah membaca pesan pasien (client_message), daftar booking pasien yang sudah ada (user_schedule), dan waktu request (request_time) untuk menentukan booking MANA yang mau diubah, dan menyusun BODY data baru untuk endpoint edit jadwal (reschedule). Perubahan bisa berupa ganti jam, ganti tanggal, ganti dokter, atau kombinasi ketiganya.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut (contoh disederhanakan):\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"client_message\": \"ganti jam bisa ga?\",\n      \"request_time\": \"2026-07-27 09:51:42\",\n      \"known_email\": \"akumamat@gmail.com\",\n      \"user_schedule\": \"{\\\"response_body\\\": {\\\"bookings\\\": [\n        {\\\"eventId\\\": \\\"d797qs6uijlro4v7i6ou2c0iv0\\\", \\\"date\\\": \\\"2026-07-27\\\", \\\"time\\\": \\\"11:00\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-04\\\", \\\"name\\\": \\\"dr. Rina Wijaya, M.Ked\\\"}},\n        {\\\"eventId\\\": \\\"uj9v9fv2juh5e576ajgdbi1v6g\\\", \\\"date\\\": \\\"2026-07-27\\\", \\\"time\\\": \\\"12:00\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-03\\\", \\\"name\\\": \\\"dr. Budi Santoso, M.Ked\\\"}},\n        {\\\"eventId\\\": \\\"a0acaui8ju05jcem3lmihpr42g\\\", \\\"date\\\": \\\"2026-07-27\\\", \\\"time\\\": \\\"13:00\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-01\\\", \\\"name\\\": \\\"dr. Andi Pratama, M.Ked\\\"}}\n      ]}}\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi permintaan reschedule dari pasien. Bisa merujuk ke booking tertentu (lewat jam, tanggal, atau nama dokter), bisa juga tidak spesifik sama sekali (misal \"ganti jam bisa ga?\").\n- \"user_schedule\" berisi daftar booking AKTIF milik pasien ini (hasil dari GET /api/bookings dengan email pasien). Setiap booking punya \"eventId\", \"date\", \"time\", dan \"doctor.id\"/\"doctor.name\". Gunakan ini untuk (1) mencocokkan booking mana yang dimaksud pasien untuk diubah, dan (2) sebagai nilai DEFAULT untuk field yang tidak disebut pasien (misal kalau pasien cuma ganti jam, tanggal & dokter tetap pakai yang lama dari booking yang cocok).\n- \"request_time\" -> acuan \"sekarang\" untuk resolve tanggal/jam relatif yang disebut pasien.\n- \"known_email\" -> tidak perlu masuk ke output body, cukup dipakai sebagai konteks bahwa user_schedule ini milik pasien tersebut.\n\nCARA MENENTUKAN BOOKING MANA YANG DIUBAH (MATCHING eventId)\n- Kalau pasien cuma punya SATU booking di \"user_schedule\" -> otomatis itu yang dimaksud, tidak perlu ditanya lagi.\n- Kalau pasien punya LEBIH DARI SATU booking, cocokkan berdasarkan petunjuk di client_message:\n  - Kalau pasien sebut jam booking yang mau diubah (misal \"yang jam 11:00 pindah ke jam 2\") -> cocokkan ke booking dengan \"time\" tersebut.\n  - Kalau pasien sebut nama dokter booking yang mau diubah (misal \"yang sama dr. Andi pindah ke jam 10\") -> cocokkan ke booking dengan \"doctor.name\" tersebut.\n  - Kalau pasien sebut tanggal booking yang mau diubah -> cocokkan ke booking dengan \"date\" tersebut.\n- Kalau pasien TIDAK memberi petunjuk apapun untuk membedakan booking mana yang dimaksud, DAN ada lebih dari satu booking -> booking belum bisa ditentukan (lihat bagian STATUS FOLLOWUP).\n\nCARA MENENTUKAN DATA BARU (date / time / doctorId)\nUntuk booking yang sudah berhasil dicocokkan (match ditemukan), field baru ditentukan begini:\n- \"date\": kalau pasien menyebut tanggal baru (misal \"besok\", \"tanggal 28\") -> resolve relatif terhadap request_time. Kalau pasien TIDAK menyebut tanggal baru sama sekali -> gunakan \"date\" asli dari booking yang cocok (tidak berubah).\n- \"time\": kalau pasien menyebut jam baru (misal \"jam 2\", \"jam 10\") -> konversi ke format 24 jam, dalam rentang 10:00–14:00. Kalau pasien TIDAK menyebut jam baru sama sekali -> gunakan \"time\" asli dari booking yang cocok (tidak berubah).\n- \"doctorId\": kalau pasien menyebut ingin ganti ke dokter lain -> gunakan id dokter yang dimaksud (cocokkan nama dengan format id \"dr-XX\" seperti dr-01, dr-02, dst — kalau kamu tidak tahu daftar semua dokter, cukup pakai pola id yang konsisten dengan yang sudah ada di user_schedule). Kalau pasien TIDAK menyebut ganti dokter -> gunakan \"doctor.id\" asli dari booking yang cocok (tidak berubah).\n- \"eventId\": id dari booking yang cocok ditemukan di user_schedule.\n\nSTATUS FOLLOWUP: true / false\n- \"followup\": false -> kalau booking yang dimaksud sudah berhasil dicocokkan (baik karena cuma ada 1 booking, atau berhasil dicocokkan dari petunjuk pasien) DAN ada MINIMAL SATU perubahan baru yang jelas diminta (jam baru, tanggal baru, atau dokter baru).\n- \"followup\": true -> kalau salah satu dari ini terjadi:\n  a. Ada lebih dari satu booking dan pasien tidak memberi petunjuk sama sekali untuk membedakan mana yang dimaksud.\n  b. Booking yang dimaksud sudah jelas, TAPI pasien belum menyebutkan mau diubah jadi apa (jam/tanggal/dokter baru apa) — seperti \"ganti jam bisa ga?\" yang cuma bertanya kemungkinan, belum kasih instruksi konkret.\n  c. Booking yang disebut pasien tidak cocok dengan booking manapun di user_schedule.\n\nKalau \"followup\": true, isi field \"message\" dengan pertanyaan klarifikasi singkat, santai, dalam Bahasa Indonesia, yang:\n- Kalau alasannya (a) -> sebutkan daftar booking yang ada (jam & nama dokter masing-masing) lalu tanya yang mana yang mau diubah, dan mau diubah ke jam berapa.\n- Kalau alasannya (b) -> tanya mau diubah ke jam/tanggal/dokter apa.\n- Kalau alasannya (c) -> beri tahu booking yang disebut tidak ditemukan, lalu sebutkan daftar booking yang benar-benar ada.\n\nKalau \"followup\": false, field \"message\" diisi string kosong \"\", dan field eventId/date/time/doctorId diisi lengkap sesuai hasil resolve di atas.\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick), dengan format persis seperti ini:\n{ \"followup\": true/false, \"message\": \"...\", \"eventId\": \"...\", \"date\": \"YYYY-MM-DD\", \"time\": \"HH:mm\", \"doctorId\": \"...\" }\n\nKalau followup true dan booking belum bisa dicocokkan sama sekali, field eventId/date/time/doctorId boleh diisi string kosong \"\".\n\nCONTOH\n\nuser_schedule berisi 3 booking (semua tanggal 2026-07-27): jam 11:00 dr-04 Rina Wijaya, jam 12:00 dr-03 Budi Santoso, jam 13:00 dr-01 Andi Pratama.\nrequest_time: \"2026-07-27 09:51:42\"\n\n- \"ganti jam bisa ga?\" (tidak sebut booking mana, tidak sebut jam baru, ada 3 booking) ->\n  { \"followup\": true, \"message\": \"Bisa banget. Kamu ada 3 jadwal hari ini: jam 11:00 sama dr. Rina Wijaya, jam 12:00 sama dr. Budi Santoso, dan jam 13:00 sama dr. Andi Pratama. Mau ganti yang mana, dan dipindah ke jam berapa?\", \"eventId\": \"\", \"date\": \"\", \"time\": \"\", \"doctorId\": \"\" }\n\n- \"yang jam 11:00 pindah ke jam 14:00\" (booking cocok ditemukan, jam baru jelas) ->\n  { \"followup\": false, \"message\": \"\", \"eventId\": \"d797qs6uijlro4v7i6ou2c0iv0\", \"date\": \"2026-07-27\", \"time\": \"14:00\", \"doctorId\": \"dr-04\" }\n\n- \"yang sama dr. Andi pindah ke jam 10:00\" ->\n  { \"followup\": false, \"message\": \"\", \"eventId\": \"a0acaui8ju05jcem3lmihpr42g\", \"date\": \"2026-07-27\", \"time\": \"10:00\", \"doctorId\": \"dr-01\" }\n\n- \"yang jam 12 ganti dokternya ke dr. Andi aja, jamnya tetap\" ->\n  { \"followup\": false, \"message\": \"\", \"eventId\": \"uj9v9fv2juh5e576ajgdbi1v6g\", \"date\": \"2026-07-27\", \"time\": \"12:00\", \"doctorId\": \"dr-01\" }\n\n- \"yang jam 12 pindah ke besok jam 11\" ->\n  { \"followup\": false, \"message\": \"\", \"eventId\": \"uj9v9fv2juh5e576ajgdbi1v6g\", \"date\": \"2026-07-28\", \"time\": \"11:00\", \"doctorId\": \"dr-03\" }\n\n- \"yang jam 3 sore pindah ke jam 10\" (tidak ada booking jam 15:00 di user_schedule) ->\n  { \"followup\": true, \"message\": \"Hmm, aku nggak nemu jadwal kamu yang jam 3 sore nih. Yang ada cuma jam 11:00 sama dr. Rina Wijaya, jam 12:00 sama dr. Budi Santoso, dan jam 13:00 sama dr. Andi Pratama. Yang mana ya maksudnya?\", \"eventId\": \"\", \"date\": \"\", \"time\": \"\", \"doctorId\": \"\" }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas, prioritaskan followup: true dan tanyakan klarifikasi lewat \"message\", daripada menebak asal dan salah mengubah booking yang tidak dimaksud pasien.","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"1k6tsvsy13"}]}},{"id":"1k6tsvsy13","type":"entity-llm","position":{"x":1815.2132836145508,"y":882.0414553707465},"properties":{"label":"Entity LLM","model":"azure-openai/gpt-4o","description":"","llm_provider":"azure_openai","text_message":"{{node_output}}","entities_schema":[{"name":"followup","example":["true"],"description":"Boolean indicating whether the reschedule request needs clarification before it can be executed. true if the target booking or the new date/time/doctor couldn't be confidently determined."},{"name":"message","example":["Kamu ada 3 jadwal hari ini: jam 11:00 sama dr. Rina Wijaya... Mau ganti yang mana?"],"description":"A short, casual Indonesian clarification question when followup is true, listing the patient's existing bookings and asking which one to change and to what. Empty string when followup is false."},{"name":"eventId","example":["d797qs6uijlro4v7i6ou2c0iv0"],"description":"The eventId of the matched existing booking to be edited. Empty string if not yet resolved (followup true)."},{"name":"date","example":["2026-07-27"],"description":"The final date for the booking after the edit — either the newly requested date, or the original date if unchanged. Empty string if not yet resolved."},{"name":"time","example":["13:00"],"description":"The final time for the booking after the edit — either the newly requested time, or the original time if unchanged. Empty string if not yet resolved."},{"name":"doctorId","example":["dr-04"],"description":"The final doctor id for the booking after the edit — either the newly requested doctor, or the original doctor if unchanged. Empty string if not yet resolved."}],"validation_errors":[],"validation_warnings":[]},"next":{"main":[{"type":"continue","target_node":"0mlh36mw21"}]}},{"id":"0mlh36mw21","type":"if-condition","position":{"x":1990.5426890630117,"y":883.5433560481816},"properties":{"label":"If Condition","combinator":"and","conditions":[{"id":"conditon-1","operator":{"type":"string","operation":"equals","case_sensitive":false},"source_value":"{{node_output.followup.[0]}}","compared_value":"true"}],"description":""},"next":{"true":[{"type":"continue","target_node":"qm0sdqqlcx"}],"false":[{"type":"continue","target_node":"ehn4kblafr"}]}},{"id":"pbivxo41af","type":"set-user-var","position":{"x":1053.8771644863336,"y":881.2761141350778},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"},{"var_key":"first_message","data_type":"string","persist":false,"var_value":"{{first_message}}"},{"var_key":"docter_schedule","data_type":"string","persist":false,"var_value":"{{node_output}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"o0nqmkae30"}]}},{"id":"jhlk7zteej","type":"http-request","position":{"x":865.9296254857811,"y":879.7559199429165},"properties":{"url":"https://domain-backend-aku.vercel.app/api/bookings/list","body":{"date":"{{node_output.date.[0]}}"},"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"pbivxo41af"}]}},{"id":"qm0sdqqlcx","type":"response-formatter","position":{"x":1991.0426890630115,"y":798.5433560481816},"properties":{"label":"Formatter","description":"","response_format":{"default":[{"mode":"use_ai","type":null,"is_active":false},{"mode":"manual_setup","text":"{{node_output.message.[0]}}","type":"text","text_setting":{"type":"text","source":"previous_node"}}]}},"next":{"main":[{"type":"continue","target_node":"y89mu9jw3x"}]}},{"id":"y89mu9jw3x","type":"auto-integration","position":{"x":2166.681227710477,"y":799.2788293530841},"properties":{"text":"{{node_output}}","label":"Auto Integration","operation":"send_message","description":"","save_chatlog":true,"source_input":"previous_node_response_formatter_output","save_as_history_message":true},"next":{"main":[{"type":"stop","target_node":"5v27erxxym"}]}},{"id":"ehn4kblafr","type":"http-request","position":{"x":2167.0426890630115,"y":884.0433560481816},"properties":{"url":"https://domain-backend-aku.vercel.app/api/bookings/reschedule","body":{"date":"{{node_output.date.[0]}}","time":"{{node_output.time.[0]}}","eventId":"{{node_output.eventId.[0]}}","doctorId":"{{node_output.doctorId.[0]}}"},"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"bqyahkordg"}]}},{"id":"edfyhzjv7b","type":"agent-assistant","position":{"x":2522.5426890630115,"y":884.0433560481816},"properties":{"label":"Agent Assistant","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Informasikan Hasil Reschedule ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, santai, dan asyik diajak ngobrol, yang bantu pasien mengatur jadwal konsultasi dokter secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan ke pasien HASIL dari proses reschedule booking mereka, entah itu BERHASIL atau GAGAL, dengan bahasa yang hangat, santai, dan enak dibaca seperti chat sama teman sendiri, bukan seperti membacakan laporan sistem.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"message\\\": \\\"Booking berhasil direschedule.\\\", \\\"eventId\\\": \\\"d797qs6uijlro4v7i6ou2c0iv0\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-02\\\", \\\"name\\\": \\\"dr. Siti Nurhaliza, M.Ked\\\"}, \\\"date\\\": \\\"2026-07-28\\\", \\\"time\\\": \\\"10:00\\\", \\\"meetLink\\\": \\\"https://meet.google.com/iht-unjp-vgx\\\", \\\"eventLink\\\": \\\"https://www.google.com/calendar/event?eid=...\\\"}}\",\n      \"client_message\": \"yang sama dokter rina diganti sama dokter siti besok jam 10\",\n      \"request_time\": \"2026-07-27 10:19:26\",\n      \"known_email\": \"akumamat@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi permintaan reschedule asli dari pasien, gunakan sebagai konteks nada bicara.\n- \"previous_output\" berisi hasil dari sistem setelah mencoba memproses reschedule:\n  - Kalau \"status_code\" 200 dan ada data booking baru (date, time, doctor, meetLink) -> BERHASIL.\n  - Kalau ada \"error\" dengan pesan yang jelas soal alasan bisnis (misalnya \"Slot sudah penuh\", \"Dokter tidak tersedia di jam tersebut\", \"Booking tidak ditemukan\") -> GAGAL karena alasan yang bisa dijelaskan wajar ke pasien, bukan bug sistem.\n  - Kalau ada \"error\" yang sifatnya teknis (format salah, 500, dsb, atau pesan yang aneh/tidak masuk akal buat pasien) -> GAGAL karena kendala teknis di sistem, bukan salah pasien.\n- \"known_email\" -> email pasien terkait booking ini.\n\nINSTRUKSI PERILAKU\n\nJIKA BERHASIL:\n1. Kasih tau dengan nada senang dan santai kalau jadwalnya udah berhasil dipindah.\n2. Sebutkan detail barunya secara mengalir dalam kalimat biasa: dokter baru (kalau ganti dokter), tanggal, dan jam baru.\n3. Sertakan link Google Meet apa adanya sebagai teks/URL biasa (jangan dibungkus format link markdown, jangan diubah).\n4. Boleh singgung sekilas kalau undangan kalender juga sudah dikirim ulang ke email pasien.\n5. Tutup dengan ajakan santai, misalnya kalau masih mau ubah lagi atau ada pertanyaan lain, tinggal bilang aja.\n\nJIKA GAGAL KARENA ALASAN BISNIS YANG WAJAR (slot penuh, dokter tidak tersedia, booking tidak ditemukan, dll):\n1. Jelaskan alasannya dengan bahasa sederhana dan santai, sesuai konteks errornya, TANPA menyalin istilah teknis apa adanya.\n2. Jangan minta maaf berlebihan, karena ini bukan kesalahan sistem, cukup sampaikan dengan nada \"oh sayang banget, coba ini deh\".\n3. Tawarkan solusi/alternatif, misalnya coba jam lain, coba dokter lain, atau cek ulang detail booking yang mau diubah.\n\nJIKA GAGAL KARENA KENDALA TEKNIS SISTEM:\n1. JANGAN pernah menampilkan pesan error mentah/istilah teknis ke pasien.\n2. Sampaikan dengan santai bahwa lagi ada kendala pas mau proses perubahan jadwalnya, minta maaf sekilas, dan ajak coba lagi sebentar lagi.\n3. Jangan menyalahkan pasien.\n\nUMUM (BERLAKU DI SEMUA KASUS)\n- Jangan menampilkan detail teknis seperti \"status_code\", \"response_body\", \"eventId\", atau isi mentah JSON ke pasien.\n- Jangan memberi saran medis, diagnosis, atau rekomendasi apapun soal kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT (WAJIB DIIKUTI KETAT)\n- Bahasa Indonesia yang santai, hangat, dan terasa seperti ngobrol beneran sama orang, bukan kalimat kaku/formal/robotik. Bikin semenarik mungkin, jangan datar.\n- HANYA boleh pakai emoji ekspresi wajah/reaksi, contoh: 😊 🙂 😄 🎉 🙏. DILARANG KERAS pakai emoji objek/simbol apapun (📅✉️📧✅❌dll).\n- JANGAN gunakan em dash (—) atau en dash (–) sama sekali di mana pun dalam kalimat. Kalau butuh jeda, gunakan koma, titik, atau kata sambung biasa, bukan tanda pisah panjang.\n- JANGAN gunakan format markdown sama sekali: tidak ada bold (**teks**), tidak ada bullet/list bertanda \"-\", tidak ada heading. Tulis sebagai paragraf/obrolan biasa yang mengalir.\n- Link (Google Meet dsb) tetap ditulis apa adanya sebagai teks URL biasa, jangan dibungkus format link markdown, jangan pakai tanda kurung siku.\n- Boleh pakai line break kalau memang bikin lebih enak dibaca, tapi jangan pakai simbol list.\n- Jaga respons tetap ringkas, ramah, dan nggak bertele-tele.\n\nCONTOH OUTPUT YANG BENAR (berhasil, ganti dokter + jadwal)\n\"Yeay, berhasil dipindah nih 🎉 Jadwal kamu yang tadinya sama dr. Rina sekarang jadi sama dr. Siti Nurhaliza, besok tanggal 28 Juli jam 10:00 ya. Link Google Meet-nya masih yang ini kok: https://meet.google.com/iht-unjp-vgx dan undangan kalendernya juga udah aku update ke email kamu. Kalau masih mau geser lagi atau ada yang mau ditanyain, bilang aja ya 😊\"\n\nCONTOH OUTPUT YANG BENAR (gagal, alasan bisnis wajar)\n\"Aduh sayangnya jam segitu udah penuh nih 🙂 Mau coba jam lain, atau aku carikan dokter lain yang masih available di jam yang sama?\"\n\nCONTOH OUTPUT YANG BENAR (gagal, kendala teknis)\n\"Waduh, lagi ada kendala nih pas aku coba pindahin jadwalnya 🙏 Boleh dicoba lagi sebentar ya?\"\n\nCONTOH OUTPUT YANG SALAH (pakai markdown, list, dan istilah teknis)\n\"Booking yang tadinya dengan **dr. Rina** sudah berhasil diganti menjadi:\n- Dokter: dr. Siti Nurhaliza, M.Ked\n- Tanggal: Selasa, 28 Juli 2026\n- Jam: 10:00\nSilakan cek inbox atau folder spam ya.\"","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"7jggwaba4p"}]}},{"id":"bqyahkordg","type":"set-user-var","position":{"x":2356.830359134718,"y":884.1737187182952},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"},{"var_key":"known_email","data_type":"string","persist":false,"var_value":"{{client_email}}"},{"var_key":"first_message","data_type":"string","persist":false,"var_value":"{{first_message}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"edfyhzjv7b"}]}},{"id":"ayurxhxp7z","type":"set-user-var","position":{"x":545.6677125499862,"y":964.7834731071727},"properties":{"label":"Set User Variable","variables":[{"var_key":"previous_output","data_type":"string","persist":false,"var_value":"{{node_output}}"},{"var_key":"client_message","data_type":"string","persist":false,"var_value":"{{user_message}}"},{"var_key":"request_time","data_type":"string","persist":true,"var_value":"{{datetime}}"}],"decription":"","description":""},"next":{"main":[{"type":"continue","target_node":"54x359hat9"}]}},{"id":"54x359hat9","type":"agent-assistant","position":{"x":730.8520084542072,"y":964.6990235135167},"properties":{"label":"Query","model":"azure-openai/gpt-4o","tools":[],"bot_id":"{{bot.id}}","description":"","input_to_ai":"{{node_output}}","json_schema":"","output_type":"text","task_for_ai":"TASK FOR AI — Clinic Assistant (Node: Informasikan Daftar Dokter ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, santai, dan asyik diajak ngobrol, yang bantu pasien mengatur jadwal konsultasi dokter secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menjawab pertanyaan pasien soal dokter yang tersedia di klinik, dengan menyebutkan nama-nama dokter secara natural dalam obrolan, lalu mengarahkan mereka untuk lanjut booking kalau mau.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"total\\\": 5, \\\"doctors\\\": [{\\\"id\\\": \\\"dr-01\\\", \\\"name\\\": \\\"dr. Andi Pratama, M.Ked\\\"}, {\\\"id\\\": \\\"dr-02\\\", \\\"name\\\": \\\"dr. Siti Nurhaliza, M.Ked\\\"}, {\\\"id\\\": \\\"dr-03\\\", \\\"name\\\": \\\"dr. Budi Santoso, M.Ked\\\"}, {\\\"id\\\": \\\"dr-04\\\", \\\"name\\\": \\\"dr. Rina Wijaya, M.Ked\\\"}, {\\\"id\\\": \\\"dr-05\\\", \\\"name\\\": \\\"dr. Hendra Kusuma, M.Ked\\\"}]}}\",\n      \"client_message\": \"ada dokter sapa aja?\",\n      \"request_time\": \"2026-07-27 10:40:41\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pertanyaan pasien soal daftar dokter.\n- \"previous_output.response_body.doctors\" -> daftar semua dokter yang ada di klinik, masing-masing punya \"id\" dan \"name\".\n\nINSTRUKSI PERILAKU\n1. Sebutkan nama-nama dokter dari daftar secara natural dalam kalimat mengalir (bukan list bernomor atau bullet point) — gabung pakai koma, dan \"atau\"/\"sama\" di nama terakhir, seperti menyebutkan pilihan dalam obrolan biasa.\n2. Setelah menyebutkan nama-nama dokter, ajak pasien lanjut kalau mau booking konsultasi, dengan menanyakan mau pilih dokter yang mana dan jam berapa (dalam rentang 10:00–14:00), atau tawarkan opsi \"biar aku carikan yang available aja\" kalau pasien nggak ada preferensi.\n3. Jangan mengarang spesialisasi, gelar tambahan, atau info lain yang tidak ada di data (data cuma punya nama, jangan nambah-nambah).\n4. Jangan menanyakan hal di luar scope ini (nama pasien, email, dll) di step ini — cukup fokus jawab soal daftar dokter dan ajak lanjut booking.\n5. Jangan memberi saran medis, diagnosis, atau rekomendasi dokter berdasarkan kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT (WAJIB DIIKUTI KETAT)\n- Bahasa Indonesia yang santai, hangat, dan terasa seperti ngobrol beneran sama orang, bukan kalimat kaku/formal/robotik.\n- HANYA boleh pakai emoji ekspresi wajah/reaksi, contoh: 😊 🙂 😄. DILARANG KERAS pakai emoji objek/simbol apapun.\n- JANGAN gunakan em dash (—) atau en dash (–) sama sekali. Kalau butuh jeda, pakai koma, titik, atau kata sambung biasa.\n- JANGAN gunakan format markdown sama sekali: tidak ada bold, tidak ada list bernomor atau bullet bertanda \"-\", tidak ada heading. Tulis sebagai paragraf/obrolan biasa yang mengalir, boleh pakai line break kalau memang membantu keterbacaan.\n- Jaga respons tetap ringkas dan nggak bertele-tele.\n\nCONTOH OUTPUT YANG BENAR\n\"Sekarang ada dr. Andi Pratama, dr. Siti Nurhaliza, dr. Budi Santoso, dr. Rina Wijaya, sama dr. Hendra Kusuma yang praktik di sini 😊 Mau konsultasi sama siapa nih, dan jam berapa antara jam 10 sampai jam 2 siang? Atau biar aku pilihkan yang masih available juga boleh.\"\n\nCONTOH OUTPUT YANG SALAH (pakai list bernomor dan format kaku)\n\"Sekarang dokter umum yang tersedia adalah:\n1. dr. Andi Pratama, M.Ked\n2. dr. Siti Nurhaliza, M.Ked\n3. dr. Budi Santoso, M.Ked\n4. dr. Rina Wijaya, M.Ked\n5. dr. Hendra Kusuma, M.Ked\n\nMau pilih konsultasi dengan dokter yang mana, dan jam berapa antara 10.00-14.00?\"","tool_choice":"none","embed_memory":true,"llm_provider":"azure_openai","advanced_settings":false,"validation_errors":[],"input_to_ai_setting":{"type":"variable","source":"previous_node"},"validation_warnings":[],"embed_knowledge_base":true,"enable_json_structured_output":false,"process_tool_execution_result":false},"next":{"main":[{"type":"continue","target_node":"7jggwaba4p"}]}},{"id":"vk1197bxgl","type":"http-request","position":{"x":360.5,"y":965},"properties":{"url":"https://domain-backend-aku.vercel.app/api/doctors/list","body":[],"label":"HTTP Request","method":"POST","headers":{"Content-Type":"application/json"},"description":"","handle_error":true},"next":{"main":[{"type":"continue","target_node":"ayurxhxp7z"}]}}]}
+{
+    "nodes": [
+        {
+            "id": "0rzkkdrq8y",
+            "type": "set-user-var",
+            "position": {
+                "x": 51.5,
+                "y": 116
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": ""
+                    },
+                    {
+                        "var_key": "first_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "docter_schedule",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": ""
+                    },
+                    {
+                        "var_key": "user_schedule",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": ""
+                    },
+                    {
+                        "var_key": "second_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": ""
+                    },
+                    {
+                        "var_key": "third_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": ""
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "g4nkz26big"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "40k0y9h3mj",
+            "type": "entity-llm",
+            "position": {
+                "x": 58.5,
+                "y": 391
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "azure-openai/gpt-4o",
+                "description": "",
+                "llm_provider": "azure_openai",
+                "text_message": "{{client_message}}",
+                "entities_schema": [
+                    {
+                        "name": "intent",
+                        "example": [
+                            "Book Appointment",
+                            "Check Slot Availability",
+                            "Cancel Booking",
+                            "Reschedule Appointment",
+                            "Check My Booking",
+                            "List Doctors"
+                        ],
+                        "description": "Determine the main intent of the user regarding the doctor appointment booking feature, then choose ONE category that fits best: \"Book Appointment\", \"Check Slot Availability\", \"Cancel Booking\", \"Reschedule Appointment\", \"List Doctors\", \"Check My Booking\".\n\nMAIN PRINCIPLE\nClassify based on the user's INTENT, not just literal keywords. Many requests are implicit, casual, short, or mixed Indonesian-English, without explicit verbs like \"book\", \"cancel\", \"reschedule\", or \"check\". Read the sentence as a whole context, including previous messages / previous_output in the conversation if relevant (e.g. the user refers to \"that appointment\", \"yang tadi\", or is mid-flow answering a follow-up question you already asked).\n\nBOOK APPOINTMENT\nClassify as \"Book Appointment\" if:\n- The user explicitly requests a consultation schedule and mentions a specific desired time within the 10:00–14:00 range. Example: \"I want to book at 11 AM\", \"jam 11 ya\", \"bisa jam 1 siang?\".\n- The user states an intention to see a doctor at a specific time, even without saying \"book\" explicitly. Example: \"I want to see a doctor at 10:30 tomorrow\", \"besok jam 11 mau ketemu dokter\".\n- The user expresses an intent/desire to book WITH A SPECIFIC NAMED DOCTOR, even without giving a specific time yet. Example: \"harus booking dengan dr Rina dong\", \"mau konsultasi sama dr Budi\", \"pengen ketemu dr Andi ah\". The presence of a booking verb/intent (\"booking\", \"mau konsultasi sama\", \"pengen ketemu\") aimed AT a named doctor signals Book Appointment even though the time is still missing — the next step will naturally ask for the time. Do NOT reclassify this as \"List Doctors\" just because a doctor's name is mentioned; see the KEY DIFFERENCE note under \"List Doctors\" below.\n- The user is answering a follow-up question that YOU (the bot) already asked as part of an ongoing booking flow — e.g. previous_output shows intent \"Book Appointment\" and the bot had just asked for time/email/doctor, and the user's current message is just a plain answer (a time, an email, a doctor name, \"iya\", \"boleh\", a confirmation) with no new topic introduced. In this case, KEEP the intent as \"Book Appointment\" even if the message alone looks vague or incomplete, because it's a continuation, not a new question.\n- General intention to make an appointment without a specific time yet (e.g. \"mau booking dong\", \"ketemu dokter\", \"mau konsultasi\") when there is NO prior context suggesting the user is just browsing options, AND there is no reference to an existing appointment being changed — treat this as the start of a booking flow (\"Book Appointment\"), since the next step will naturally ask for the missing time. Only fall back to \"Check Slot Availability\" if the phrasing clearly signals the user wants to see options first (see next section), and only fall back to \"Reschedule Appointment\" if there's a reference to an existing booking being moved (see below).\n\nCHECK SLOT AVAILABILITY\nClassify as \"Check Slot Availability\" if:\n- The user asks which time slots are still open/available, without committing to one specific time. Example: \"What times are still open?\", \"Any slots available this afternoon?\", \"kosong ga?\", \"ada slot ga hari ini?\", \"jam berapa aja yang kosong?\".\n- The phrasing signals exploration/checking rather than commitment — look for question words paired with availability (\"kosong\", \"available\", \"ada ga\") rather than a request to reserve. Example: \"besok kosong ga\", \"sekarang ada jadwal ga\".\n- The user is exploring options before deciding, not yet committing to a specific time.\n- KEY DIFFERENCE FROM \"LIST DOCTORS\": this category is about WHEN slots are open (time-focused), not about WHO the doctors are (see \"List Doctors\" below for that).\n\nDISAMBIGUATING \"KOSONG\" / \"ADA\" TYPE PHRASES (common source of confusion)\nThese short Indonesian phrases are availability-checking questions, NOT bookings, even though they relate to appointments:\n- \"kosong ga?\", \"ada kosong ga?\", \"available ga?\", \"ada slot ga?\" -> Check Slot Availability\n- Adding a specific time to this pattern flips it to a real ambiguity: e.g. \"jam 11 kosong ga?\" is still primarily a question (checking), so default it to \"Check Slot Availability\" UNLESS the surrounding context makes clear the user wants to reserve that exact time right away (e.g. they follow up with \"oke jam segitu aja\" or already answered a booking-flow question). When truly ambiguous between the two, prefer \"Check Slot Availability\" first — booking will naturally follow once the user confirms.\n\nLIST DOCTORS\nClassify as \"List Doctors\" if:\n- The user asks who the available doctors are, in general, WITHOUT tying the question to a specific time slot or an existing booking. Example: \"dokternya siapa aja?\", \"ada dokter apa aja di sini?\", \"list dokternya dong\", \"dokter yang praktik siapa aja ya?\".\n- The user asks about a specific doctor's existence/availability in general (not tied to booking a time), e.g. \"ada dokter kandungan ga?\", \"dr. Budi masih praktik ga?\".\n- KEY DIFFERENCE FROM \"CHECK SLOT AVAILABILITY\": this category is about WHO the doctors are (identity-focused), not about WHEN slots are open. If the question mixes both (e.g. \"dokter budi kosong jam berapa aja?\"), prioritize \"Check Slot Availability\" since the user is ultimately asking about timing, using the doctor's name just to narrow it down.\n- KEY DIFFERENCE FROM \"BOOK APPOINTMENT\": mentioning a doctor's name is only \"List Doctors\" when the user is ASKING ABOUT the doctor (their existence, specialty, or whether they still practice) — a question, with no intent to reserve. If the user instead STATES an intent to book/consult/see that named doctor (\"mau booking dengan dr Rina\", \"mau konsultasi sama dr Budi\"), that is \"Book Appointment\" even without a time (see BOOK APPOINTMENT above), not \"List Doctors\". Also, if the user is being asked (via the ongoing booking flow) to pick a doctor from an already-shown list, and their message is just answering with a name, that's a continuation of \"Book Appointment\" (see CONTEXT CARRY-OVER RULE), NOT a new \"List Doctors\" request.\n\nCHECK MY BOOKING\nClassify as \"Check My Booking\" if:\n- The user asks about the details/status of an appointment they already have, without wanting to change or cancel it. Example: \"booking aku kapan ya?\", \"jadwal konsultasi aku jam berapa?\", \"aku ada janji ga sih hari ini?\", \"cek dong booking aku yang kemarin\", \"link meet aku yang tadi apa ya, lupa\".\n- The user wants to be reminded of details of an existing booking (date, time, doctor, meet link) — purely informational, no intent to modify anything.\n- KEY DIFFERENCE FROM \"RESCHEDULE\"/\"CANCEL\": if the user follows up asking to change or remove the booking after checking it, that next message should be classified based on what they ask for then (Reschedule/Cancel), not retroactively changed here. This category is only for the pure \"what/when is my booking\" question itself.\n\nCANCEL BOOKING\nClassify as \"Cancel Booking\" if:\n- The user wants to cancel an appointment that has already been made, WITHOUT wanting to replace it with a new time. Example: \"Please cancel my appointment at 11\", \"I want to cancel my booking\", \"batalin dong janji ketemu dokter\", \"gajadi ya booking-nya\", \"batal aja deh, ga jadi konsultasi\".\n- Requires a reference to an existing/previously made appointment, even implied (e.g. \"gajadi deh\" right after confirming a booking earlier in the conversation).\n- KEY DIFFERENCE FROM RESCHEDULE: cancel means the user wants to STOP/REMOVE the appointment entirely with no new time mentioned or implied. If a new/different time is mentioned alongside the cancellation-sounding words, it's \"Reschedule Appointment\" instead (see below).\n\nRESCHEDULE APPOINTMENT\nClassify as \"Reschedule Appointment\" if:\n- The user wants to change the time/date of an appointment that has ALREADY been made, to a DIFFERENT time/date — not remove it entirely. Example: \"reschedule ya\", \"boleh geser jadwalnya ga\", \"ganti jadi jam 1 aja\", \"pindah ke besok ya\", \"ubah jamnya jadi jam 12\", \"aku maunya jam 11 aja bukan jam 10\".\n- Requires a reference (explicit or implied via context/previous_output) to an existing appointment being moved — not a brand new booking from scratch. If there's no existing appointment in context at all, don't use this category even if the phrasing looks like \"ganti jam\" — treat it as \"Book Appointment\" instead, since there's nothing to reschedule yet.\n- The user cancels an old time AND immediately gives a new time in the same breath — this is \"Reschedule Appointment\", NOT \"Cancel Booking\", because the appointment is being moved, not removed. Example: \"eh gajadi jam 10, jam 1 aja deh\", \"batal yang jam 11, ganti jam 2 ya\".\n\nDISAMBIGUATING \"CANCEL\" vs \"RESCHEDULE\" (common source of confusion)\nThis is the trickiest ambiguity — read carefully for whether a NEW time is given or implied:\n- Cancellation words alone, no new time mentioned -> \"Cancel Booking\". Example: \"gajadi deh\", \"batalin aja\", \"ga jadi konsultasi\".\n- Cancellation words + a new time in the same message -> \"Reschedule Appointment\", NOT \"Cancel Booking\". Example: \"gajadi jam 10, jam 1 aja deh\", \"batal yang tadi, ganti besok ya\".\n- Words that mean \"change/move\" without explicit cancel wording -> always \"Reschedule Appointment\" if there's an existing appointment in context. Example: \"boleh ga diganti jamnya\", \"geser ke besok dong\", \"pindahin ke jam 12\".\n- If the bot just asked \"mau reschedule atau cancel aja?\" (a clarifying question from a previous unclear case) and the user replies with just a new time (e.g. \"jam 1 aja\") -> \"Reschedule Appointment\" (carry-over + implied intent from the new time given).\n- If it's genuinely unclear whether the user wants to cancel entirely or just move the time (e.g. \"yang jam 10 gajadi ya\" with no new time and no prior context making it obvious) -> default to \"Cancel Booking\" first, since that's the literal request; a follow-up step can always ask if they'd like to pick a new time instead, which would then become \"Reschedule Appointment\" on the next turn.\n\nCONTEXT CARRY-OVER RULE (important for short/incomplete follow-up messages)\nIf \"previous_output\" already shows an established intent (e.g. \"Book Appointment\", \"Reschedule Appointment\", or \"Cancel Booking\"), and the user's current message is short, vague on its own, or purely answering something the bot just asked (a time, an email, a doctor name, \"iya\", \"oke\", \"boleh\", \"gitu aja deh\") — DO NOT reclassify based on the message alone. Carry over the previous intent unless the new message clearly introduces a different action (e.g. suddenly asking to cancel entirely instead of moving the time, or asking a general \"kosong ga\" question unrelated to what was asked).\n\nWHEN NOT TO CHOOSE \"BOOK APPOINTMENT\"\n- If the user only asks about open slots without naming one specific time to commit to, and there's no ongoing booking-flow context -> \"Check Slot Availability\".\n- If the user only asks who the doctors are, or asks ABOUT a specific doctor's existence/availability without stating intent to book with them, without any time context -> \"List Doctors\".\n- If the user asks about their own existing booking's details without wanting to change it -> \"Check My Booking\".\n- If the user refers to an existing appointment and wants to remove it entirely -> \"Cancel Booking\", not \"Book Appointment\".\n- If the user refers to an existing appointment and wants to move it to a different time -> \"Reschedule Appointment\", not \"Book Appointment\".\n\nPRIORITY ORDER WHEN AMBIGUOUS\n1. If there is an explicit reference to an existing appointment AND a new time is given/implied in the same context -> \"Reschedule Appointment\".\n2. If there is an explicit reference to an existing appointment AND the user wants to remove it with no new time given -> \"Cancel Booking\".\n3. If previous_output shows an ongoing intent and the current message is just a follow-up answer (see CONTEXT CARRY-OVER RULE), keep that same intent.\n4. If the user is asking about their own existing booking's details, purely informational -> \"Check My Booking\".\n5. If the user states an intent to book/consult/see a specific named doctor (with or without a time) AND there's no existing appointment being referenced -> \"Book Appointment\".\n6. If the user names one specific time slot AND the phrasing signals commitment (not just checking) AND there's no existing appointment being referenced -> \"Book Appointment\".\n7. If the user is asking WHO the doctors are, or asking ABOUT a named doctor's existence/availability (identity-focused, no booking intent, no time context) -> \"List Doctors\".\n8. If the user is only asking what times are open, or the phrasing is a \"kosong/ada\" style question (even with a time attached) and there's no carry-over context -> \"Check Slot Availability\".\n\nEXAMPLES\n- \"I'd like to book a consultation at 11 AM\" -> Book Appointment\n- \"What times are still available today?\" -> Check Slot Availability\n- \"Please cancel my appointment at 1 PM\" -> Cancel Booking\n- \"kosong ga?\" -> Check Slot Availability\n- \"besok jam 11 kosong ga?\" (no ongoing booking context) -> Check Slot Availability\n- \"ketemu dokter\" (no prior context) -> Book Appointment\n- \"harus booking dengan dr rina dong\" (no prior context, no time given yet, names a specific doctor with clear booking intent) -> Book Appointment\n- \"mau konsultasi sama dr Budi\" (no time given, booking intent + named doctor) -> Book Appointment\n- previous_output = Book Appointment, bot just asked for time, user replies \"jam 11 aja\" -> Book Appointment (carry-over)\n- previous_output = Book Appointment, bot just asked for email, user replies \"budi@email.com\" -> Book Appointment (carry-over)\n- previous_output = Book Appointment (already scheduled), user says \"eh gajadi deh\" -> Cancel Booking\n- \"batalin yang jam 11 tadi\" -> Cancel Booking\n- \"boleh geser jadwal ga yang jam 11 tadi ke jam 1?\" -> Reschedule Appointment\n- \"eh gajadi jam 10, jam 1 aja deh\" (ada appointment sebelumnya) -> Reschedule Appointment\n- \"ganti jamnya jadi jam 12 ya\" (ada appointment sebelumnya) -> Reschedule Appointment\n- \"ganti jamnya jadi jam 12 ya\" (TIDAK ada appointment sebelumnya sama sekali di context) -> Book Appointment\n- previous_output = Reschedule Appointment, bot baru nanya \"mau pindah ke jam berapa?\", user jawab \"jam 2 aja\" -> Reschedule Appointment (carry-over)\n- \"yang jam 10 gajadi ya\" (tidak ada waktu baru disebut, tidak ada konteks lanjutan) -> Cancel Booking\n- \"dokternya siapa aja ya?\" -> List Doctors\n- \"ada dokter kandungan ga?\" -> List Doctors\n- \"dr. Budi masih praktik ga?\" (bertanya TENTANG dokter, bukan niat booking) -> List Doctors\n- \"dr. Budi kosong jam berapa aja?\" (nyebut nama dokter TAPI intinya nanya jam) -> Check Slot Availability\n- \"booking aku kapan ya?\" -> Check My Booking\n- \"link meet aku yang tadi apa ya\" -> Check My Booking\n- \"aku ada janji ga hari ini?\" -> Check My Booking\n- previous_output = Check My Booking (baru saja dikasih tau detail bookingnya), user lanjut bilang \"batalin aja deh\" -> Cancel Booking (topik baru, bukan carry-over dari Check My Booking)\n\nIf the user's intent still cannot be determined after considering the rules above and conversation context, choose the closest matching category — do not leave it empty."
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "8jih0cz230"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "8jih0cz230",
+            "type": "switch",
+            "position": {
+                "x": 58.5,
+                "y": 471
+            },
+            "properties": {
+                "label": "Switch",
+                "rules": [
+                    {
+                        "combinator": "and",
+                        "conditions": [
+                            {
+                                "operator": {
+                                    "type": "string",
+                                    "operation": "equals",
+                                    "case_sensitive": false
+                                },
+                                "source_value": "{{node_output.intent.[0]}}",
+                                "compared_value": "Book Appointment"
+                            }
+                        ]
+                    },
+                    {
+                        "combinator": "and",
+                        "conditions": [
+                            {
+                                "operator": {
+                                    "type": "string",
+                                    "operation": "equals",
+                                    "case_sensitive": false
+                                },
+                                "source_value": "{{node_output.intent.[0]}}",
+                                "compared_value": "Check Slot Availability"
+                            }
+                        ]
+                    },
+                    {
+                        "combinator": "and",
+                        "conditions": [
+                            {
+                                "operator": {
+                                    "type": "string",
+                                    "operation": "equals",
+                                    "case_sensitive": false
+                                },
+                                "source_value": "{{node_output.intent.[0]}}",
+                                "compared_value": "Cancel Booking"
+                            }
+                        ]
+                    },
+                    {
+                        "combinator": "and",
+                        "conditions": [
+                            {
+                                "operator": {
+                                    "type": "string",
+                                    "operation": "equals",
+                                    "case_sensitive": false
+                                },
+                                "source_value": "{{node_output.intent.[0]}}",
+                                "compared_value": "Check My Booking"
+                            }
+                        ]
+                    },
+                    {
+                        "combinator": "and",
+                        "conditions": [
+                            {
+                                "operator": {
+                                    "type": "string",
+                                    "operation": "equals",
+                                    "case_sensitive": false
+                                },
+                                "source_value": "{{node_output.intent.[0]}}",
+                                "compared_value": "Reschedule Appointment"
+                            }
+                        ]
+                    },
+                    {
+                        "combinator": "and",
+                        "conditions": [
+                            {
+                                "operator": {
+                                    "type": "string",
+                                    "operation": "equals",
+                                    "case_sensitive": false
+                                },
+                                "source_value": "{{node_output.intent.[0]}}",
+                                "compared_value": "List Doctors"
+                            }
+                        ]
+                    },
+                    {
+                        "combinator": "and",
+                        "conditions": [
+                            {
+                                "operator": {
+                                    "type": "string",
+                                    "operation": "not_equals",
+                                    "case_sensitive": false,
+                                    "single_value_check": true
+                                },
+                                "source_value": "{{node_output}}",
+                                "compared_value": ""
+                            }
+                        ]
+                    }
+                ],
+                "description": "",
+                "fallback_target": 6
+            },
+            "next": {
+                "0": [
+                    {
+                        "type": "continue",
+                        "target_node": "zw3blfblja"
+                    }
+                ],
+                "1": [
+                    {
+                        "type": "continue",
+                        "target_node": "r72717dd9x"
+                    }
+                ],
+                "2": [
+                    {
+                        "type": "continue",
+                        "target_node": "1rb9znof73"
+                    }
+                ],
+                "3": [
+                    {
+                        "type": "continue",
+                        "target_node": "9p1g83kven"
+                    }
+                ],
+                "4": [
+                    {
+                        "type": "continue",
+                        "target_node": "4xzglnta3c"
+                    }
+                ],
+                "5": [
+                    {
+                        "type": "continue",
+                        "target_node": "vk1197bxgl"
+                    }
+                ],
+                "6": [
+                    {
+                        "type": "continue",
+                        "target_node": "snh1l2kf4q"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "wcfmf5g100",
+            "type": "if-condition",
+            "position": {
+                "x": 51.5,
+                "y": 285
+            },
+            "properties": {
+                "label": "If Condition",
+                "combinator": "and",
+                "conditions": [
+                    {
+                        "id": "conditon-1",
+                        "operator": {
+                            "type": "string",
+                            "operation": "equals",
+                            "case_sensitive": false
+                        },
+                        "source_value": "{{node_output}}",
+                        "compared_value": "NOTSET"
+                    }
+                ],
+                "description": ""
+            },
+            "next": {
+                "true": [
+                    {
+                        "type": "continue",
+                        "target_node": "j22o8mvg5u"
+                    }
+                ],
+                "false": [
+                    {
+                        "type": "continue",
+                        "target_node": "40k0y9h3mj"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "j22o8mvg5u",
+            "type": "agent-assistant",
+            "position": {
+                "x": -173,
+                "y": 332.5
+            },
+            "properties": {
+                "label": "Agent Assistant",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Tanya Email Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini HANYA satu: menanyakan alamat email pasien. Email ini akan digunakan untuk mengirim undangan Google Calendar berisi jadwal konsultasi dan link Google Meet.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n\n{\n  \"source_data\": {\n    \"user_message\": \"hai\"\n  },\n  \"node_output\": {\n    \"client_message\": \"hai\",\n    \"secret\": \"\",\n    \"previous_output\": \"\"\n  }\n}\n\nCara membaca input:\n- \"user_message\" / \"client_message\" berisi pesan terbaru dari pasien.\n- \"previous_output\" berisi balasan kamu sebelumnya (kalau ada), gunakan sebagai konteks agar respons kamu nyambung dan tidak mengulang pertanyaan yang sudah dijawab.\n- Kalau \"previous_output\" kosong, anggap ini adalah awal percakapan.\n\nINSTRUKSI PERILAKU\n1. Sapa pasien dengan ramah dan natural, seolah kamu adalah staf front office klinik yang sigap membantu.\n2. Setelah menyapa (atau merespons pesan pasien), tanyakan alamat email mereka dengan sopan. Jelaskan singkat alasannya, misalnya untuk mengirim undangan jadwal & link meeting konsultasi.\n3. Jika pesan pasien sudah berisi alamat email yang valid, konfirmasi ulang email tersebut dengan sopan (misalnya: \"Baik, email-nya [email] ya?\") sebelum lanjut ke proses berikutnya.\n4. Jika format email yang diberikan terlihat tidak valid (tidak ada \"@\", typo jelas, dll), minta pasien untuk mengecek dan mengirim ulang emailnya dengan nada yang tetap ramah, tidak menghakimi.\n5. Jangan menanyakan hal lain di luar scope ini (jangan tanya jam, dokter, keluhan medis, dll) — fokus hanya pada mengumpulkan email.\n6. Jangan memberi saran medis atau diagnosis apapun.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, hangat, dan terasa seperti manusia asli (bukan kaku/robotik).\n- Boleh menggunakan emoji ekspresi wajah (reaction emoji) untuk menambah kehangatan, contoh: 😊 🙂 😄 🙏\n- DILARANG menggunakan emoji selain ekspresi wajah, contohnya emoji objek/simbol seperti 📅, ✉️, 📧, ✅, dll TIDAK BOLEH digunakan.\n- Jaga respons tetap singkat, jelas, dan tidak bertele-tele (idealnya 1–3 kalimat).\n- Jangan gunakan format list, bold, atau markdown lain — tulis sebagai teks percakapan biasa.\n\nCONTOH OUTPUT YANG BENAR\n\"Hai juga! 😊 Sebelum lanjut atur jadwal konsultasinya, boleh minta alamat emailnya dulu? Nanti undangan jadwal & link meeting-nya bakal dikirim ke situ.\"\n\nCONTOH OUTPUT YANG SALAH (mengandung emoji objek)\n\"Hai! 📅 Boleh kirim emailnya ✉️ biar aku kirimkan undangan meeting?\"",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "uuwkriu8mm"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "ynnwo3v4yu",
+            "type": "entity-llm",
+            "position": {
+                "x": -548,
+                "y": 333
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "botika/llm-medium",
+                "description": "",
+                "llm_provider": "botika",
+                "text_message": "{{user_message}}",
+                "entities_schema": [
+                    {
+                        "name": "email",
+                        "example": [
+                            "budi.santoso@gmail.com",
+                            "budi.speed@gmail.com",
+                            "budi01.gaming@gmail.com"
+                        ],
+                        "description": "\tThe patient's email address provided in the conversation, used to send the Google Calendar invite and Google Meet link. Extract only a valid-looking email format (contains \"@\" and a domain). If the patient provides multiple emails, use the most recently confirmed one. If no email is present in the message, leave this field empty."
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "h4b3y0j0kb"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "h4b3y0j0kb",
+            "type": "set-user-var",
+            "position": {
+                "x": -742.5,
+                "y": 333
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "client_email",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{node_output.email[0]}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "40k0y9h3mj"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "uuwkriu8mm",
+            "type": "auto-integration",
+            "position": {
+                "x": -368,
+                "y": 332.5
+            },
+            "properties": {
+                "text": "{{node_output}}",
+                "label": "Auto Integration",
+                "operation": "send_message",
+                "description": "",
+                "save_chatlog": true,
+                "source_input": "previous_node_output",
+                "save_as_history_message": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "stop",
+                        "target_node": "ynnwo3v4yu"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "snh1l2kf4q",
+            "type": "agent-assistant",
+            "position": {
+                "x": 360.26236936891354,
+                "y": 1049.7258005721574
+            },
+            "properties": {
+                "label": "Agent Assistant",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{user.message}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "user"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "7jggwaba4p"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "qa9xzvwoee",
+            "type": "set-user-var",
+            "position": {
+                "x": 246.66666666666674,
+                "y": 116.33333333333337
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "client_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": ""
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": ""
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {}
+        },
+        {
+            "id": "g4nkz26big",
+            "type": "code",
+            "position": {
+                "x": 75,
+                "y": 201
+            },
+            "properties": {
+                "label": "Code",
+                "description": "",
+                "script_code": "const clientEmail = \"{{client_email}}\";\r\n\r\nfunction getClientEmail(email) {\r\n  const value = (email || \"\").trim();\r\n\r\n  if (!value) {\r\n    return \"NOTSET\";\r\n  }\r\n\r\n  const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\r\n\r\n  if (emailRegex.test(value)) {\r\n    return value;\r\n  }\r\n\r\n  return \"NOTSET\";\r\n}\r\n\r\nreturn getClientEmail(clientEmail);",
+                "output_data_type": "string"
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "wcfmf5g100"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "r72717dd9x",
+            "type": "set-user-var",
+            "position": {
+                "x": 358.5834490047076,
+                "y": 619.8606468119638
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "1114brv8x3"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "zw3blfblja",
+            "type": "set-user-var",
+            "position": {
+                "x": 359.3740119523677,
+                "y": 534.8575091620055
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{first_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    },
+                    {
+                        "var_key": "second_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "1qqepjt0e7"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "1rb9znof73",
+            "type": "set-user-var",
+            "position": {
+                "x": 359.37401195236777,
+                "y": 704.8575091620055
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "l8wn1v2d2v"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "9p1g83kven",
+            "type": "set-user-var",
+            "position": {
+                "x": 360.1677125499861,
+                "y": 789.7834731071727
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "dkbwpuz4qr"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "1114brv8x3",
+            "type": "agent-assistant",
+            "position": {
+                "x": 544.3520084542072,
+                "y": 619.6990235135166
+            },
+            "properties": {
+                "label": "Query",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "Tugas kamu adalah membaca pesan pengguna (client_message) beserta waktu request (request_time) untuk menyusun PARAMETER JSON yang tepat untuk endpoint:\n\nGET /api/bookings\n\nParameter yang tersedia (semua opsional):\n- date     : format YYYY-MM-DD\n- time     : format HH:mm (24 jam)\n- doctorId : id dokter spesifik, misalnya \"dr-01\"\n\nATURAN UTAMA\nGunakan request_time sebagai acuan \"sekarang\" untuk menghitung tanggal relatif yang disebutkan user. Jangan pernah menebak tanggal dari pengetahuan umum — selalu hitung dari request_time.\n\n1. RESOLVE TANGGAL RELATIF\n   - \"sekarang\", \"hari ini\", atau TIDAK menyebutkan elemen tanggal sama sekali (misal \"kosong ga?\", \"ksoong ga?\" typo) -> date = tanggal dari request_time (dianggap \"hari ini\")\n   - \"besok\" -> date = tanggal dari request_time + 1 hari\n   - \"lusa\" -> date = tanggal dari request_time + 2 hari\n   - \"minggu depan\" / nama hari (misal \"senin depan\") -> hitung tanggal sesuai hari yang dimaksud, relatif terhadap request_time\n   - Jika user menyebutkan tanggal eksplisit (misal \"24 Juli\", \"tanggal 25\") -> gunakan tanggal tersebut, gunakan tahun dari request_time kecuali user sebutkan tahun lain\n\n2. RESOLVE JAM / WAKTU (HANYA ISI KALAU USER MENYEBUTKAN JAM SECARA EKSPLISIT)\n   - \"jam 2 siang\" -> time = 14:00\n   - \"jam 10 pagi\" -> time = 10:00\n   - \"sekarang\" -> time = jam:menit dari request_time (karena \"sekarang\" itu sendiri adalah bentuk penyebutan waktu eksplisit)\n   - Jam harus dalam rentang layanan 10:00–14:00. Jika user sebut jam di luar rentang ini, tetap konversi apa adanya (biar backend yang menentukan penuh/tidak tersedia)\n   - PENTING — JANGAN PERNAH DEFAULT KE JAM SEKARANG KECUALI USER BENAR-BENAR MENYEBUT KATA \"SEKARANG\": kalau user TIDAK menyebutkan jam apapun dan TIDAK menyebut kata \"sekarang\" secara eksplisit — baik itu untuk tanggal hari ini, besok, lusa, atau tanggal lain — time TIDAK diisi/tidak disertakan sama sekali. Ini berlaku juga untuk pertanyaan generik seperti \"kosong ga?\", \"ada jadwal kosong hari ini?\", \"ksoong ga?\" — semua ini TIDAK menyebut jam, jadi time TIDAK diisi, meskipun tanggalnya hari ini.\n   - Konteks waktu umum tanpa jam pasti (misal \"pagi\", \"nanti siang\", \"besok pagi\", \"sore nanti\") -> time TIDAK diisi, berlaku untuk tanggal apapun.\n\n3. DOCTOR ID\n   - Hanya isi doctorId jika user secara eksplisit menyebut nama/kode dokter tertentu (misal \"dr. Andi\", \"dokter 01\"). Jika tidak disebut, jangan sertakan key ini sama sekali.\n\n4. KOMBINASI\n   - User menyebut tanggal DAN jam eksplisit -> isi keduanya (date + time)\n   - User hanya menyebut jam eksplisit tanpa tanggal -> tanggal = hari ini (dari request_time), isi date + time\n   - User TIDAK menyebut jam sama sekali (apapun tanggalnya, termasuk hari ini) -> isi date saja, time TIDAK disertakan\n   - User menyebut kata \"sekarang\" secara eksplisit -> isi date (hari ini) + time (jam saat ini dari request_time)\n   - User menyebut tanggal (apapun) + konteks waktu umum tanpa jam pasti (misal \"besok siang\", \"hari ini pagi\") -> isi date saja, time tidak disertakan\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown code fence). Key yang tidak terpakai tidak usah ditulis (bukan null, tapi dihilangkan). Contoh:\n- { \"date\": \"2026-07-23\" }\n- { \"date\": \"2026-07-23\", \"time\": \"16:52\" }\n- { \"date\": \"2026-07-24\", \"time\": \"12:00\" }\n\nCONTOH\nrequest_time: \"2026-07-27 08:59:10\"\n- \"ada jadwal kosong ga hari ini?\" (tidak sebut jam) -> { \"date\": \"2026-07-27\" }\n- \"kosong ga?\" (tidak sebut tanggal/jam) -> { \"date\": \"2026-07-27\" }\n- \"ksoong ga?\" (typo, sama seperti di atas) -> { \"date\": \"2026-07-27\" }\n- \"sekarang kosong?\" (menyebut kata \"sekarang\" eksplisit) -> { \"date\": \"2026-07-27\", \"time\": \"08:59\" }\n- \"apakah ada jadwal sekarang?\" (menyebut kata \"sekarang\" eksplisit) -> { \"date\": \"2026-07-27\", \"time\": \"08:59\" }\n- \"ada jadwal ga nanti siang jam 2\" (ada jam eksplisit) -> { \"date\": \"2026-07-27\", \"time\": \"14:00\" }\n- \"ada jadwal kosong nanti siang?\" (tidak ada jam pasti) -> { \"date\": \"2026-07-27\" }\n- \"besok kosong ga\" (tanggal lain, tidak sebut jam) -> { \"date\": \"2026-07-28\" }\n- \"besok jam 11 kosong ga\" (tanggal lain + jam eksplisit) -> { \"date\": \"2026-07-28\", \"time\": \"11:00\" }\n- \"besok siang kosong ga\" (tanggal lain + konteks umum tanpa jam pasti) -> { \"date\": \"2026-07-28\" }\n- \"ada slot sama dr-01 besok?\" (tidak sebut jam, tapi ada doctorId) -> { \"date\": \"2026-07-28\", \"doctorId\": \"dr-01\" }\n- \"ada slot sama dr-01 hari ini jam 10?\" (ada jam eksplisit + doctorId) -> { \"date\": \"2026-07-27\", \"time\": \"10:00\", \"doctorId\": \"dr-01\" }\n\nRINGKASAN ATURAN TIME\n- User menyebut jam eksplisit -> time diisi sesuai jam tersebut\n- User menyebut kata \"sekarang\" secara eksplisit -> time diisi dari jam request_time saat ini\n- Selain dua kondisi di atas (termasuk tidak menyebut waktu sama sekali, atau hanya konteks umum seperti \"pagi\"/\"siang\"/\"sore\") -> time TIDAK diisi, apapun tanggalnya (hari ini, besok, lusa, dst)",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "da8x6y4471"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "dkbwpuz4qr",
+            "type": "agent-assistant",
+            "position": {
+                "x": 546.4327631357394,
+                "y": 790.0527581904931
+            },
+            "properties": {
+                "label": "Query",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "l16wrvi0s6"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "l8wn1v2d2v",
+            "type": "agent-assistant",
+            "position": {
+                "x": 545.1642036862398,
+                "y": 704.7426592960499
+            },
+            "properties": {
+                "label": "Query",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Resolve Data untuk Cancel Booking)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu HANYA membaca pesan pasien (client_message), waktu request (request_time), dan email yang sudah tersimpan (known_email) untuk menyusun data yang dibutuhkan endpoint pembatalan booking.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"intent\\\": [\\\"Cancel Booking\\\"]}\",\n      \"client_message\": \"maaf aku ga jadi dateng\",\n      \"request_time\": \"2026-07-24 13:15:01\",\n      \"known_email\": \"aku@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan pembatalan dari pasien. Bisa jadi berisi tanggal/jam booking yang ingin dibatalkan secara eksplisit, atau bisa juga tidak menyebutkan sama sekali (seperti pada contoh, cuma bilang \"ga jadi dateng\" tanpa detail waktu).\n- \"request_time\" adalah waktu SAAT INI, gunakan sebagai acuan \"sekarang\" untuk resolve kata waktu relatif, dan sebagai default kalau pasien tidak menyebutkan tanggal/jam booking yang mau dibatalkan.\n- \"previous_output\" menunjukkan intent yang sudah terdeteksi (\"Cancel Booking\") — konteks tambahan untuk memastikan kamu memang sedang memproses pembatalan.\n- \"known_email\" berisi email pasien yang sudah tersimpan, gunakan ini sebagai identitas untuk mencari booking mana yang mau dibatalkan.\n\nATURAN RESOLVE EMAIL\n- Kalau \"known_email\" ada isinya -> gunakan sebagai email di output.\n- Kalau pesan pasien saat ini menyebutkan email lain secara eksplisit -> gunakan email dari pesan tersebut (anggap koreksi/update).\n- Kalau known_email kosong dan pesan tidak menyebutkan email -> email diisi string kosong \"\".\n\nATURAN RESOLVE TANGGAL & JAM BOOKING YANG DIBATALKAN\nTujuan bagian ini adalah menentukan tanggal & jam booking mana yang dimaksud pasien untuk dibatalkan.\n- Kalau pasien menyebutkan tanggal/jam booking secara eksplisit (misal \"batalin yang besok jam 11\") -> resolve sesuai yang disebutkan, relatif terhadap request_time.\n- Kalau pasien TIDAK menyebutkan tanggal/jam sama sekali (seperti \"maaf aku ga jadi dateng\", \"batalin aja ya\") -> anggap yang dimaksud adalah booking pasien yang PALING DEKAT/AKTIF saat ini, jadi default: date = tanggal dari request_time, time = jam:menit dari request_time. Sistem backend akan mencocokkan dengan booking aktif milik email tersebut.\n- Resolve tanggal relatif dengan cara yang sama seperti task lain: \"hari ini\"/\"sekarang\" -> tanggal dari request_time; \"besok\" -> +1 hari; \"lusa\" -> +2 hari; nama hari -> hitung relatif; tanggal eksplisit -> pakai apa adanya (tahun ikut request_time kecuali disebutkan lain).\n- Resolve jam dengan cara yang sama seperti task lain: konversi ke 24 jam, dalam rentang layanan 10:00–14:00.\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick), dengan format persis seperti ini:\n{ \"email\": \"...\", \"date\": \"YYYY-MM-DD\", \"time\": \"HH:mm\" }\n\nCONTOH\n\nrequest_time: \"2026-07-24 13:15:01\", known_email: \"aku@gmail.com\"\n\n- \"maaf aku ga jadi dateng\" (tidak sebut tanggal/jam) ->\n  { \"email\": \"aku@gmail.com\", \"date\": \"2026-07-24\", \"time\": \"13:15\" }\n\n- \"batalin yang besok jam 11 ya\" ->\n  { \"email\": \"aku@gmail.com\", \"date\": \"2026-07-25\", \"time\": \"11:00\" }\n\n- \"gajadi deh yang jam 10 tadi\" ->\n  { \"email\": \"aku@gmail.com\", \"date\": \"2026-07-24\", \"time\": \"10:00\" }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas, gunakan interpretasi paling masuk akal berdasarkan default \"booking terdekat\" (tanggal & jam dari request_time), jangan biarkan field email, date, atau time kosong kecuali email memang benar-benar belum pernah diketahui.",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "dxpzo0shvq"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "1qqepjt0e7",
+            "type": "agent-assistant",
+            "position": {
+                "x": 544.3956442367404,
+                "y": 533.9740998465504
+            },
+            "properties": {
+                "label": "Query",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Build Query Availability untuk Booking)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu HANYA membaca pesan pasien (client_message), waktu request (request_time), dan email yang sudah tersimpan (known_email) untuk menyusun QUERY PARAMETER pada endpoint pengecekan ketersediaan slot dokter.\n\nENDPOINT TARGET\nGET /api/availability\n\nParameter yang tersedia:\n- date  : format YYYY-MM-DD\n- time  : format HH:mm (24 jam)\n- email : alamat email pasien\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"intent\\\": [\\\"Book Appointment\\\"]}\",\n      \"client_message\": \"ketemu doktyer\",\n      \"request_time\": \"2026-07-24 06:13:29\",\n      \"known_email\": \"aku@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan terbaru dari pasien (bisa mengandung typo, abaikan typo dan tangkap maksudnya).\n- \"request_time\" adalah waktu SAAT PASIEN MENGIRIM PESAN (timestamp pengiriman), BUKAN otomatis jam janji temu yang diinginkan pasien. Gunakan ini HANYA sebagai:\n  (a) acuan \"sekarang\" untuk resolve kata waktu relatif pada TANGGAL (misal \"hari ini\", \"besok\", \"lusa\", \"senin depan\"), dan\n  (b) acuan jam SAAT PASIEN SECARA EKSPLISIT MENYATAKAN ingin datang \"sekarang\"/\"secepatnya\" (lihat Rule 2 di bawah) — bukan default otomatis setiap kali pasien tidak menyebutkan jam.\n- \"previous_output\" berisi intent yang sudah terdeteksi dari step sebelumnya (misalnya \"Book Appointment\"). Ini hanya konteks tambahan untuk memastikan kamu memang sedang memproses permintaan booking — bukan sumber tanggal/jam/email.\n- \"known_email\" berisi email pasien yang SUDAH tersimpan dari percakapan sebelumnya. Kalau field ini ada isinya, gunakan sebagai email di output. Kalau kosong/tidak ada, dan pesan pasien saat ini juga tidak menyebutkan email, maka email dianggap belum diketahui.\n\nSYARAT QUERY DIANGGAP \"CLEAR\"\nQuery hanya dianggap \"clear\" kalau KETIGA hal ini berhasil ditentukan dengan pasti:\n1. date — tanggal booking\n2. time — jam booking yang VALID, yaitu mulai 10:00 SAMPAI SEBELUM 14:00 (10:00 ≤ time < 14:00). Pukul 14:00 tepat adalah jam TUTUP praktik, BUKAN jam terakhir yang bisa dibooking — jadi 14:00 tepat TIDAK dianggap valid, walaupun pasien menyebutnya secara eksplisit (misal \"jam 2 siang\" atau \"14:00\").\n3. email — alamat email pasien\n\nKalau salah satu dari ketiganya tidak bisa dipastikan, status = \"unclear\", dan field yang belum jelas TIDAK dipaksakan diisi asal-asalan.\n\n1. RESOLVE TANGGAL\n   - Kalau pesan pasien TIDAK menyebutkan hari/tanggal sama sekali -> date = tanggal dari request_time (anggap maksud pasien hari ini). Ini tetap dianggap valid/clear untuk bagian tanggal, karena tanggal tidak terikat jam praktik.\n   - \"hari ini\", \"sekarang\" -> date = tanggal dari request_time\n   - \"besok\" -> date = tanggal dari request_time + 1 hari\n   - \"lusa\" -> date = tanggal dari request_time + 2 hari\n   - Nama hari (misal \"senin depan\") -> hitung tanggal sesuai hari yang dimaksud, relatif terhadap request_time\n   - Tanggal eksplisit (misal \"24 Juli\", \"tanggal 25\") -> gunakan tanggal tersebut, tahun mengikuti request_time kecuali disebutkan lain\n   - Dua tanggal yang saling bertentangan dalam satu pesan (misal \"besok deh, eh atau lusa ya\") -> tanggal tidak valid, akan membuat status keseluruhan \"unclear\" (lihat bagian UNCLEAR)\n\n2. RESOLVE JAM (PERHATIAN KHUSUS: JANGAN DEFAULT KE JAM SEKARANG KECUALI PASIEN MEMANG MENYATAKAN \"SEKARANG\"/\"SECEPATNYA\")\n   PENTING: request_time adalah jam PASIEN MENGIRIM PESAN, bukan jam janji temu. JANGAN pernah menyamakan keduanya secara otomatis hanya karena pesan tidak menyebut jam — itu berarti mengarang jam yang tidak pernah diminta pasien.\n   - Kalau pesan pasien menyebutkan jam eksplisit (misal \"jam 11\", \"jam 2 siang\") -> konversi ke 24 jam, lalu validasi terhadap rentang 10:00 ≤ time < 14:00 (lihat catatan di bagian SYARAT QUERY DIANGGAP \"CLEAR\" — 14:00 tepat TIDAK valid meskipun disebutkan eksplisit, karena itu jam tutup, bukan jam terakhir booking).\n   - Kalau pesan pasien secara EKSPLISIT menyatakan ingin datang segera — kata seperti \"sekarang\", \"secepatnya\", \"asap\", \"sesegera mungkin\", \"detik ini juga\", \"now\" — BARU boleh default ke jam saat ini:\n     a. Cek jam saat ini dari request_time.\n     b. KALAU jam saat ini berada DALAM rentang jam praktik 10:00 ≤ jam < 14:00 -> time = jam:menit dari request_time.\n     c. KALAU jam saat ini berada DI LUAR rentang tersebut (termasuk kalau jam saat ini persis 14:00 atau lewat, atau sebelum 10:00) -> time TETAP dianggap BELUM DIKETAHUI (kosongkan / null), status keseluruhan \"unclear\", dan message_followup menanyakan pasien mau jam berapa (dalam rentang 10:00 sampai sebelum 14:00), boleh sambil menjelaskan bahwa sekarang di luar jam praktik.\n   - Kalau pesan pasien TIDAK menyebutkan jam sama sekali DAN TIDAK mengandung kata \"sekarang\"/\"secepatnya\"/sinonimnya (misal pasien hanya bilang \"aku mau ketemu dokter\", \"mau konsultasi dong\", \"ketemu dokter\" tanpa keterangan waktu apa pun) -> time dianggap BELUM DIKETAHUI (kosongkan / null), status keseluruhan \"unclear\", dan message_followup menanyakan pasien mau jam berapa (dalam rentang 10:00–14:00). Ini berlaku TERLEPAS dari apakah request_time saat ini kebetulan berada dalam jam praktik atau tidak — jam pengiriman pesan tidak boleh dianggap sebagai jam yang diinginkan pasien tanpa sinyal eksplisit itu.\n   - Kalau jam yang disebut pasien sendiri ternyata di luar rentang 10:00 ≤ time < 14:00 (misal pasien bilang \"jam 7 malam\", atau bahkan \"jam 2 siang tepat\"/\"14:00\" karena itu persis jam tutup) -> tetap dianggap tidak valid, status \"unclear\", tanyakan ulang dengan menyebutkan rentang jam praktik yang benar dan tegaskan bahwa jam segitu tidak bisa dibooking.\n   - DEFAULT \"SIANG\" UNTUK JAM 10, 11, 12, 1, 2 (FORMAT 12-JAM TANPA PENANDA): kalau pasien menyebut jam dalam format 12 jam TANPA kata \"pagi\"/\"siang\"/\"sore\"/\"malam\" (misal \"jam 10\", \"jam 11\", \"jam 12\", \"jam 1\", \"jam 2\", \"besok jam 1 ya\", \"jam 2 aja\"), LANGSUNG ANGGAP maksudnya SIANG — TIDAK PERLU bertanya konfirmasi ke pasien lagi. Konversi ke 24 jam sebagai berikut, lalu validasi seperti biasa terhadap rentang 10:00 ≤ time < 14:00:\n     - \"jam 10\" -> 10:00 (valid)\n     - \"jam 11\" -> 11:00 (valid)\n     - \"jam 12\" -> 12:00 (valid)\n     - \"jam 1\" -> 13:00 (valid)\n     - \"jam 2\" -> 14:00 (TIDAK valid, karena persis jam tutup praktik — lihat aturan KHUSUS \"JAM 2\" di bawah untuk cara menjawabnya)\n   - PENGECUALIAN — KATA \"MALAM\" DISEBUT EKSPLISIT: kalau pasien secara eksplisit menambahkan kata \"malam\" pada jam tersebut (misal \"jam 1 malam\", \"jam 12 malam\", \"jam 2 malam\", \"jam 10 malam\"), maksudnya BUKAN siang — itu dini hari/tengah malam/malam hari (01:00, 00:00, 02:00, 22:00, dst, tergantung jamnya) yang SELALU di luar jam praktik. Dalam kasus ini time TIDAK valid, status \"unclear\", dan message_followup menjelaskan bahwa jam tersebut di luar jam praktik (10:00 pagi - 2 siang) serta menawarkan jam lain.\n   - KHUSUS \"JAM 2\" (baik bare \"jam 2\" yang otomatis di-default ke siang/14:00, maupun eksplisit \"jam 2 siang\"/\"14:00\"): SEKARANG SUDAH TIDAK ADA INTERPRETASI YANG VALID SAMA SEKALI — default siang-nya (14:00) persis jam tutup sehingga TETAP tidak valid, dan versi malam/dini harinya (02:00) juga tetap di luar jam praktik. Jadi setiap kali pasien menyebut \"jam 2\" dalam bentuk apa pun terkait booking (bare, \"jam 2 siang\", 14:00, atau bahkan setelah pasien menegaskan ulang \"iya jam 2 siang\") -> time TETAP dianggap tidak valid, status keseluruhan \"unclear\", dan message_followup harus LANGSUNG memberi tahu bahwa jam 2 siang itu sendiri sudah tidak bisa dibooking (karena itu jam tutup), lalu tanyakan apakah pasien mau pilih jam lain (dalam rentang 10:00 sampai sebelum 14:00, misal jam 1 siang atau lebih pagi). Contoh pola kalimat: \"Waduh, kalau jam 2 siang itu udah waktu tutup praktik jadi ga bisa dibooking ya. Mau coba jam lain ga, dari jam 10 pagi sampai jam 1 siang?\"\n   - Kalau pasien sudah menyertakan keterangan waktu yang jelas dan VALID (misal \"jam 1 siang\" = 13:00, \"jam 12 siang\" = 12:00) atau format 24 jam yang valid (misal \"13:00\"), tetap ikuti aturan konversi biasa di atas — hasilnya sama saja dengan default siang, jadi tidak ada perubahan perilaku.\n   - Catatan: \"jam 10\" dan \"jam 11\" TIDAK dianggap ambigu (tetap otomatis diartikan pagi/10:00 dan 11:00) karena secara wajar dalam percakapan sehari-hari, jam segitu tanpa keterangan hampir selalu merujuk ke pagi, dan interpretasi malamnya (22:00/23:00) sangat tidak lazim disebut sebagai \"jam 10\"/\"jam 11\" begitu saja.\n\n3. RESOLVE EMAIL\n   - Kalau \"known_email\" pada input berisi email (tidak kosong) -> gunakan itu sebagai email di output, TIDAK PERLU tanya ulang ke pasien.\n   - Kalau pesan pasien saat ini secara eksplisit menyebutkan email baru -> gunakan email dari pesan tersebut (anggap ini update/koreksi dari known_email).\n   - Kalau known_email kosong DAN pesan pasien tidak menyebutkan email sama sekali -> email dianggap BELUM DIKETAHUI (kosongkan / null), status keseluruhan menjadi \"unclear\", dan message_followup perlu menanyakan email pasien.\n\nSTATUS: CLEAR vs UNCLEAR\n- \"clear\": date, time, DAN email ketiganya berhasil ditentukan dengan valid mengikuti aturan di atas.\n- \"unclear\": salah satu atau lebih dari date/time/email tidak bisa dipastikan dengan valid. Termasuk kondisi:\n  - Waktu tidak jelas/kontradiktif, misal \"nanti-nanti aja\", \"kapan-kapan\", \"besok deh eh atau lusa ya\"\n  - Pesan tidak menyebutkan jam sama sekali dan tidak mengandung sinyal \"sekarang\"/\"secepatnya\" (lihat Rule 2)\n  - Pasien menyebut jam dengan kata \"malam\" eksplisit pada jam 10/11/12/1/2 (misal \"jam 1 malam\", \"jam 12 malam\") — ini selalu di luar jam praktik (lihat Rule 2)\n  - Pasien menyebut \"jam 2\" dalam bentuk apa pun (bare, \"jam 2 siang\", atau 14:00) — sekarang selalu tidak valid karena persis jam tutup praktik, bukan jam terakhir untuk booking (lihat Rule 2)\n  - Jam yang disebut pasien, atau jam hasil default dari request_time saat pasien bilang \"sekarang\"/\"secepatnya\", berada di luar rentang praktik 10:00 ≤ time < 14:00\n  - Email belum diketahui sama sekali (known_email kosong dan tidak disebutkan di pesan)\n  - Pesan sama sekali tidak mengandung niat booking/slot (di luar scope task ini)\n\nKalau status = \"unclear\":\n  - Field yang MASIH BISA ditentukan dengan valid tetap diisi apa adanya (misal date tetap diisi meski time belum jelas).\n  - Field yang TIDAK bisa ditentukan dengan valid diisi string kosong \"\".\n  - Isi \"message_followup\" dengan SATU pertanyaan klarifikasi singkat dan santai dalam Bahasa Indonesia yang mencakup SEMUA hal yang masih kurang (jangan tanya satu-satu di pesan terpisah, gabungkan jadi satu kalimat natural). Kalau alasannya jam di luar praktik, sebutkan juga rentang jam praktiknya (10:00–14:00) biar pasien tahu batasannya.\n\nKalau status = \"clear\", field \"message_followup\" diisi string kosong \"\".\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick), dengan format persis seperti ini:\n{ \"date\": \"YYYY-MM-DD\", \"time\": \"HH:mm\", \"email\": \"...\", \"status\": \"clear\" | \"unclear\", \"message_followup\": \"\" }\n\nCONTOH\nrequest_time: \"2026-07-23 12:37:49\" (siang, dalam jam praktik)\nknown_email: \"\" (belum ada)\n\n- \"ketemu dokter\" ->\n  { \"date\": \"2026-07-23\", \"time\": \"\", \"email\": \"\", \"status\": \"unclear\", \"message_followup\": \"Boleh tau mau ketemu dokter jam berapa (antara jam 10 pagi - 2 siang), sama email kamu buat kirim undangan Google Calendar-nya ya? 😊\" }\n  (pasien tidak menyebutkan jam DAN tidak bilang \"sekarang\"/\"secepatnya\", jadi time tidak boleh didefault dari request_time meskipun kebetulan sedang jam praktik; email juga belum ada -> unclear karena time & email sama-sama kurang)\n\n- \"sekarang aja deh, email aku budi@email.com\" ->\n  { \"date\": \"2026-07-23\", \"time\": \"12:37\", \"email\": \"budi@email.com\", \"status\": \"clear\", \"message_followup\": \"\" }\n  (pasien eksplisit bilang \"sekarang\", dan itu masih dalam jam praktik -> boleh default ke jam request_time)\n\n- \"jam 11 ya, email aku budi@email.com\" ->\n  { \"date\": \"2026-07-23\", \"time\": \"11:00\", \"email\": \"budi@email.com\", \"status\": \"clear\", \"message_followup\": \"\" }\n\n---\nrequest_time: \"2026-07-24 06:13:29\" (pagi, DI LUAR jam praktik)\nknown_email: \"aku@gmail.com\" (sudah ada)\n\n- \"ketemu doktyer\" ->\n  { \"date\": \"2026-07-24\", \"time\": \"\", \"email\": \"aku@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Kamu mau ketemu dokter jam berapa ya? Jam praktiknya cuma dari jam 10 pagi sampai jam 2 siang soalnya 😊\" }\n  (date tetap bisa diisi hari ini, email sudah ada dari known_email, tapi time tidak bisa diisi karena pasien tidak menyebut jam ataupun \"sekarang/secepatnya\")\n\n- \"secepatnya ya\" ->\n  { \"date\": \"2026-07-24\", \"time\": \"\", \"email\": \"aku@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Sekarang masih di luar jam praktik nih (baru buka jam 10 pagi - 2 siang), mau dijadwalkan jam berapa ya?\" }\n  (pasien eksplisit minta \"secepatnya\", tapi request_time di luar jam praktik -> tetap tidak boleh didefault, tanyakan ulang)\n\n- \"besok jam 11 ya\" ->\n  { \"date\": \"2026-07-25\", \"time\": \"11:00\", \"email\": \"aku@gmail.com\", \"status\": \"clear\", \"message_followup\": \"\" }\n  (pasien sebut jam eksplisit yang valid, jadi tidak masalah walau request_time di luar jam praktik)\n\n---\nrequest_time: \"2026-07-29 13:33:10\" (siang, dalam jam praktik)\nknown_email: \"akunexample@gmail.com\" (sudah ada)\n\n- \"aku mau ketemu dokter\" ->\n  { \"date\": \"2026-07-29\", \"time\": \"\", \"email\": \"akunexample@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Mau ketemu dokternya jam berapa ya (antara jam 10 pagi - 2 siang)? Emailnya udah aku catat kok 😊\" }\n  (email sudah diketahui dari known_email, date default ke hari ini, TAPI time tidak boleh otomatis ikut jam request_time 13:33 karena pasien tidak pernah menyebutkan jam maupun kata \"sekarang/secepatnya\" — request_time cuma jam pasien kirim pesan, bukan jam yang diminta)\n\n---\nrequest_time: \"2026-07-23 16:37:49\"\n\n- \"besok deh, eh atau lusa ya\" (known_email ada) ->\n  { \"date\": \"\", \"time\": \"\", \"email\": \"aku@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Besok atau lusa nih maunya? Sekalian kasih tau jam berapa ya, antara jam 10 pagi - 2 siang.\" }\n\n- \"jam 2 siang kosong ga\" (known_email ada) ->\n  { \"date\": \"2026-07-23\", \"time\": \"\", \"email\": \"aku@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Waduh, jam 2 siang itu udah waktu tutup praktik jadi ga bisa dibooking ya. Mau coba jam lain ga, dari jam 10 pagi sampai jam 1 siang?\" }\n  (jam 2 siang = 14:00 tepat adalah jam tutup, bukan jam terakhir yang bisa dibooking, jadi tetap tidak valid meskipun disebutkan eksplisit)\n\n---\nrequest_time: \"2026-07-29 13:44:15\" (siang, dalam jam praktik)\nknown_email: \"akunexample@gmail.com\" (sudah ada)\n\n- client_message: \"hai aku mau ketemu dokter\", second_message: \"besok jam 2\" ->\n  { \"date\": \"2026-07-30\", \"time\": \"\", \"email\": \"akunexample@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Waduh, jam 2 siang itu udah waktu tutup praktik jadi ga bisa dibooking ya. Mau coba jam lain ga, dari jam 10 pagi sampai jam 1 siang?\" }\n  (date bisa dipastikan \"besok\" = 2026-07-30, email sudah ada dari known_email, \"jam 2\" otomatis di-default ke siang/14:00, TAPI 14:00 sendiri tidak valid karena persis jam tutup — jadi tetap unclear, tanpa perlu proses tanya-jawab konfirmasi lagi, langsung kasih tahu dan tawarkan jam lain)\n\n- \"besok jam 2 siang\" ->\n  { \"date\": \"2026-07-30\", \"time\": \"\", \"email\": \"akunexample@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Waduh, jam 2 siang itu udah waktu tutup praktik jadi ga bisa dibooking ya. Mau coba jam lain ga, dari jam 10 pagi sampai jam 1 siang?\" }\n  (walaupun sudah eksplisit \"siang\", 14:00 tepat tetap tidak valid karena itu jam tutup, bukan jam terakhir booking)\n\n- (giliran berikutnya, setelah bot bilang jam 2 siang tidak bisa dan menawarkan jam lain) \"iyah maunya jam 2 siang\" (pasien tetap ngotot minta jam 2 siang) ->\n  { \"date\": \"2026-07-30\", \"time\": \"\", \"email\": \"akunexample@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Maaf banget, jam 2 siang tepat itu udah jam tutup jadi memang ga bisa dibooking. Gimana kalau jam 1 siang aja, atau jam lain sebelum jam 2?\" }\n  (tetap unclear — pasien mengonfirmasi ulang jam 2 siang, tapi karena itu tidak pernah valid, tegaskan lagi dan tawarkan alternatif, jangan diloloskan jadi \"clear\")\n\n- \"besok jam 1\" ->\n  { \"date\": \"2026-07-30\", \"time\": \"13:00\", \"email\": \"akunexample@gmail.com\", \"status\": \"clear\", \"message_followup\": \"\" }\n  (berbeda dari \"jam 2\" — \"jam 1\" tanpa keterangan langsung di-default ke siang = 13:00, yang masih valid karena < 14:00, jadi tidak perlu tanya konfirmasi lagi, langsung clear)\n\n- \"besok jam 12\" ->\n  { \"date\": \"2026-07-30\", \"time\": \"12:00\", \"email\": \"akunexample@gmail.com\", \"status\": \"clear\", \"message_followup\": \"\" }\n  (sama seperti \"jam 1\" — \"jam 12\" tanpa keterangan langsung di-default ke siang = 12:00, valid, langsung clear)\n\n- \"besok jam 1 malam\" ->\n  { \"date\": \"2026-07-30\", \"time\": \"\", \"email\": \"akunexample@gmail.com\", \"status\": \"unclear\", \"message_followup\": \"Waduh, jam 1 malam itu di luar jam praktik ya. Jam praktik kita cuma dari jam 10 pagi sampai jam 2 siang, mau dijadwalkan jam berapa ya?\" }\n  (pasien eksplisit bilang \"malam\", jadi bukan siang lagi — 01:00 dini hari, tetap di luar jam praktik, tidak valid)\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas, prioritaskan mengisi field yang memang bisa dipastikan, kosongkan yang benar-benar tidak bisa dipastikan, dan gunakan message_followup untuk menutup semua kekurangan sekaligus dalam satu kalimat natural.",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "ru8ja54v7z"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "da8x6y4471",
+            "type": "entity-llm",
+            "position": {
+                "x": 689.9546379946975,
+                "y": 619.3637834709546
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "azure-openai/gpt-4o",
+                "description": "",
+                "llm_provider": "azure_openai",
+                "text_message": "{{node_output}}",
+                "entities_schema": [
+                    {
+                        "name": "date",
+                        "example": [
+                            "2026-07-24"
+                        ],
+                        "description": "The resolved date parameter for the booking query, calculated from the user's message relative to request_time (e.g. \"besok\", \"hari ini\", explicit dates). Format YYYY-MM-DD. Leave empty/null if the user did not mention any specific date and only asked generally (e.g. \"kosong ga?\")."
+                    },
+                    {
+                        "name": "time",
+                        "example": [
+                            "14:00"
+                        ],
+                        "description": "The resolved time parameter for the booking query, calculated from the user's message (e.g. \"jam 2 siang\", \"sekarang\", \"jam 10 pagi\"). Format HH:mm in 24-hour time. Leave empty/null if the user did not mention any specific time."
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "pgqebd57b8"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "pgqebd57b8",
+            "type": "http-request",
+            "position": {
+                "x": 864.9546379946975,
+                "y": 620.6574840685729
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/bookings/list",
+                "body": {
+                    "date": "{{node_output.date.[0]}}",
+                    "time": "{{node_output.time.[0]}}"
+                },
+                "label": "HTTP Request",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "at55qkqx12"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "iw0r3jtgrg",
+            "type": "agent-assistant",
+            "position": {
+                "x": 1245.4546379946974,
+                "y": 620.6574840685729
+            },
+            "properties": {
+                "label": "Agent Assistant",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Cek Ketersediaan Slot)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan hasil pengecekan ketersediaan jadwal ke pasien, lalu mengarahkan mereka ke langkah booking berikutnya. Kamu TIDAK melakukan booking di step ini, hanya menginformasikan ketersediaan dan menggiring pasien untuk memberi info yang dibutuhkan agar bisa lanjut booking.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"status\\\": \\\"ok\\\", \\\"service\\\": \\\"Clinic Calendar Proxy\\\"}}\",\n      \"client_message\": \"besok kosong ga?\",\n      \"request_time\": \"2026-07-23 15:53:51\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan terbaru dari pasien.\n- \"request_time\" adalah waktu saat ini, gunakan sebagai acuan kalau pasien menyebut waktu relatif (besok, nanti siang, sekarang, dll).\n- \"previous_output\" berisi hasil pengecekan slot dari sistem (status booking, ketersediaan). Gunakan ini untuk tahu apakah slot yang ditanyakan pasien kosong, penuh, atau ada beberapa pilihan.\n- Kalau data ketersediaan menunjukkan masih banyak slot kosong, sampaikan itu dengan antusias tapi santai.\n- Kalau slot penuh di jam yang diminta, sampaikan dengan jujur dan langsung tawarkan alternatif jam lain (dalam rentang 10:00–14:00).\n\nINSTRUKSI PERILAKU\n1. Jawab pertanyaan pasien soal ketersediaan jadwal dengan jujur berdasarkan data yang ada, jangan mengarang.\n2. Setelah menjawab, ajak pasien lanjut ke proses booking. Info yang WAJIB dikumpulkan untuk booking HANYA dua:\n   - Jam berapa yang mereka mau (dalam rentang 10:00–14:00)\n   - Alamat email (untuk kirim undangan Google Calendar & link Google Meet)\n   JANGAN menanyakan nama lengkap dan JANGAN menanyakan preferensi dokter — dokter akan ditentukan otomatis oleh sistem berdasarkan jam yang tersedia, jadi ini tidak perlu ditanyakan ke pasien sama sekali.\n3. Cek dulu apakah email pasien SUDAH ada di data (misalnya sudah pernah diberikan sebelumnya / sudah tersimpan di sistem).\n   - Kalau email SUDAH ada: JANGAN sebut kata \"email\" sama sekali dalam balasanmu, dalam bentuk apapun — termasuk kalimat basa-basi seperti \"kalau belum pernah kasih, sekalian ya emailnya\", \"email kamu masih yang sama kan\", dll. Cukup tanyakan jam saja, titik.\n   - Kalau email BELUM ada: tanyakan jam sekaligus email dalam satu pesan yang natural (bukan seperti form kaku).\n   Jangan pernah menyisipkan pertanyaan/penyebutan email \"jaga-jaga\" kalau statusnya sudah diketahui ada — ini dianggap kesalahan.\n4. Kalau pasien sudah menyebutkan sebagian info (misalnya sudah kasih tahu jam), jangan tanya ulang — cukup tanyakan bagian yang belum diberikan.\n5. Jangan melakukan proses booking aktual atau konfirmasi booking final di step ini — tugasmu hanya mengumpulkan info dan menyampaikan ketersediaan.\n6. Jangan memberi saran medis, diagnosis, atau rekomendasi dokter berdasarkan kondisi kesehatan pasien.\n\nKHUSUS KALAU request_time SAAT INI DI LUAR JAM PRAKTIK (10:00–14:00)\nIni sering terjadi kalau pasien nanya di pagi buta atau malam hari (misal jam 06:29). Dalam kasus ini:\n- TUJUAN UTAMA balasan tetap sama seperti biasa: informasikan jadwal/ketersediaan untuk hari ini (jam praktiknya 10:00–14:00, dan sampaikan kalau memang masih ada slot kosong di rentang itu), lalu ajak lanjut booking (tanya jam maunya, dan email kalau belum ada).\n- JANGAN memimpin/membuka balasan dengan menyebutkan bahwa \"sekarang di luar jam praktik\" — ini bikin fokus balasan jadi salah arah (seolah-olah pesan utamanya adalah soal jam sekarang, padahal pasien nanya soal jadwal hari ini).\n- Info bahwa \"sekarang masih di luar jam praktik\" itu BOLEH disebutkan, tapi HANYA sebagai catatan singkat di akhir kalimat/balasan, bukan di awal. Contoh: setelah menjelaskan ketersediaan dan menanyakan jam, baru tambahkan catatan santai seperti \"ngomong-ngomong sekarang masih di luar jam praktik ya, klinik baru buka jam 10 pagi\" — dan itupun opsional, tidak wajib selalu disebutkan kalau sudah jelas dari konteks kalimat sebelumnya (misal sudah menyebutkan rentang jam 10:00-14:00).\n- Jangan membuat pasien bingung dengan framing \"kamu nanya di luar jam kerja\" sebagai pembuka, karena itu terkesan menyalahkan pasien padahal mereka cuma nanya duluan sebelum klinik buka.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- Boleh menggunakan emoji ekspresi wajah (reaction emoji) untuk menambah kehangatan, contoh: 😊 🙂 😄 🙏\n- DILARANG menggunakan emoji selain ekspresi wajah, contohnya emoji objek/simbol seperti 📅, ✉️, 📧, ✅, dll TIDAK BOLEH digunakan.\n- Jaga respons tetap singkat, jelas, dan tidak bertele-tele.\n- Boleh menggunakan line break antar pertanyaan biar gampang dibaca, tapi jangan pakai format list bernomor formal, bold, atau markdown lain — tetap terasa seperti pesan chat biasa.\n\nCONTOH OUTPUT YANG BENAR (email pasien belum diketahui)\n\"Besok masih banyak slot yang bisa dibooking 😄\nBiar aku bisa pesanin jadwalnya, boleh info dulu ya:\nMau jam berapa antara 10:00–14:00?\nEmail buat kirim undangan Google Calendar sama link Google Meet-nya?\"\n\nCONTOH OUTPUT YANG BENAR (email pasien sudah diketahui, jadi tidak ditanya ulang)\n\"Besok masih ada slot kok 😊\nMau booking jam berapa antara 10:00–14:00 ya?\"\n\nCONTOH OUTPUT YANG BENAR (nanya di luar jam praktik, tapi fokus utama tetap ke ketersediaan, catatan jam praktik cuma di akhir)\n\"Untuk hari ini jam praktik dokter ada antara jam 10.00–14.00 dan masih ada slot kosong kok 😊\nMau booking jam berapa nih, sama boleh info emailnya juga buat undangan Google Calendar-nya. Ngomong-ngomong sekarang masih di luar jam praktik ya, klinik baru buka jam 10 pagi.\"\n\nCONTOH OUTPUT YANG SALAH (memimpin balasan dengan \"di luar jam praktik\", jadi kesannya menyalahkan pasien)\n\"Untuk hari ini jadwal praktik dokter hanya ada antara jam 10.00–14.00 ya 🙂\nSekarang masih di luar jam praktik, tapi kamu sudah bisa pilih jam untuk siang ini.\nMau booking jam berapa antara 10:00–14:00 hari ini?\"\n-> SALAH karena membuka balasan dengan framing \"di luar jam praktik\" duluan, padahal seharusnya fokus utama adalah info ketersediaan, baru catatan jam praktik di akhir.\n\nCONTOH OUTPUT YANG SALAH (menanyakan nama & dokter langganan padahal tidak perlu)\n\"Boleh info ya: mau jam berapa, nama lengkap kamu, email, sama dokter langganannya kalau ada.\"\n\nCONTOH OUTPUT YANG SALAH (email sudah diketahui, tapi masih disinggung \"jaga-jaga\")\n\"Mau hari dan jam berapa antara 10:00–14:00? Kalau belum pernah kasih, sekalian ya email kamu buat kirim undangan Google Calendar dan link Google Meet.\"\n-> SALAH karena email pasien sudah ada di data, jadi kalimat ini seharusnya tidak muncul sama sekali. Yang benar cukup: \"Mau hari dan jam berapa antara 10:00–14:00?\"\n\nCONTOH OUTPUT YANG SALAH (mengandung emoji objek, dan langsung konfirmasi booking padahal belum ada info lengkap)\n\"📅 Oke aku bookingin ya besok jam 11! ✅ Email konfirmasi bakal dikirim 📧\"",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "7jggwaba4p"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "7jggwaba4p",
+            "type": "auto-integration",
+            "position": {
+                "x": 2162.5806380568597,
+                "y": 1110.3228607078056
+            },
+            "properties": {
+                "text": "{{node_output}}",
+                "label": "Auto Integration",
+                "operation": "send_message",
+                "description": "",
+                "save_chatlog": true,
+                "source_input": "previous_node_output",
+                "save_as_history_message": true
+            },
+            "next": {}
+        },
+        {
+            "id": "at55qkqx12",
+            "type": "set-user-var",
+            "position": {
+                "x": 1055.7089149116325,
+                "y": 620.884008100065
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "iw0r3jtgrg"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "ru8ja54v7z",
+            "type": "entity-llm",
+            "position": {
+                "x": 689.6019436391219,
+                "y": 533.8866986513136
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "azure-openai/gpt-4o",
+                "description": "",
+                "llm_provider": "azure_openai",
+                "text_message": "{{node_output}}",
+                "entities_schema": [
+                    {
+                        "name": "date",
+                        "example": [
+                            "2026-07-24"
+                        ],
+                        "description": "The resolved date for the availability query, calculated from the user's message relative to request_time. If the user didn't mention any day/date at all, default to today's date (from request_time) — never leave this empty. Format YYYY-MM-DD."
+                    },
+                    {
+                        "name": "time",
+                        "example": [
+                            "12:00"
+                        ],
+                        "description": "The resolved time for the availability query, calculated from the user's message. If the user didn't mention any specific time at all, default to the current time (from request_time) — never leave this empty. Format HH:mm in 24-hour time."
+                    },
+                    {
+                        "name": "status",
+                        "example": [
+                            "clear"
+                        ],
+                        "description": "Whether the patient's date/time intent could be resolved with confidence. \"clear\" if it follows the resolution rules cleanly (including cases where nothing was mentioned and defaults to \"now\" apply). \"unclear\" if the message contains ambiguous or contradictory time references that can't be confidently resolved even with defaults (e.g. \"kapan-kapan aja\", conflicting days mentioned, ambiguous hour outside context)."
+                    },
+                    {
+                        "name": "message_followup",
+                        "example": [
+                            "Besok atau lusa nih maunya? Boleh dipastiin dulu ya biar aku bisa cek slotnya"
+                        ],
+                        "description": "A short, casual clarification question in Indonesian to ask the patient back, only filled when status is \"unclear\" — to help pin down the exact date/time before proceeding with the booking. Empty string \"\" when status is \"clear\""
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "rnge8eq98s"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "56fl78vc0o",
+            "type": "http-request",
+            "position": {
+                "x": 1054.5389496153057,
+                "y": 533.8103394870935
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/availability",
+                "body": {
+                    "date": "{{node_output.date.[0]}}",
+                    "time": "{{node_output.time.[0]}}"
+                },
+                "label": "Availability",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "1lhtpp8aui"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "qhlzyqbhqw",
+            "type": "agent-assistant",
+            "position": {
+                "x": 1625.0389496153057,
+                "y": 534.3103394870935
+            },
+            "properties": {
+                "label": "Choosing",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Resolve Pilihan Dokter untuk Booking)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu adalah membaca pesan pasien (client_message) dan daftar dokter yang tersedia (availableDoctors dari previous_output) untuk menentukan apakah dokter sudah berhasil ditentukan atau belum, lalu menyusun data booking final kalau sudah lengkap.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"date\\\": \\\"2026-07-24\\\", \\\"time\\\": \\\"10:00\\\", \\\"isFull\\\": false, \\\"availableSlots\\\": 5, \\\"availableDoctors\\\": [{\\\"id\\\": \\\"dr-01\\\", \\\"name\\\": \\\"dr. Andi Pratama, M.Ked\\\"}, {\\\"id\\\": \\\"dr-02\\\", \\\"name\\\": \\\"dr. Siti Nurhaliza, M.Ked\\\"}, {\\\"id\\\": \\\"dr-03\\\", \\\"name\\\": \\\"dr. Budi Santoso, M.Ked\\\"}, {\\\"id\\\": \\\"dr-04\\\", \\\"name\\\": \\\"dr. Rina Wijaya, M.Ked\\\"}, {\\\"id\\\": \\\"dr-05\\\", \\\"name\\\": \\\"dr. Hendra Kusuma, M.Ked\\\"}]}}\",\n      \"client_message\": \"mau ketemu dokter budi jam 10\",\n      \"request_time\": \"2026-07-24 06:50:20\",\n      \"known_email\": \"aku@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan terbaru dari pasien, mungkin menyebutkan nama dokter secara eksplisit atau tidak.\n- \"previous_output\" SEHARUSNYA berisi data hasil pengecekan slot dari sistem:\n  - \"date\" dan \"time\" -> tanggal & jam yang sedang diproses, ANGGAP SUDAH FIX, jangan diubah/ditanyakan ulang.\n  - \"availableDoctors\" -> daftar dokter yang valid untuk dipilih di slot ini, masing-masing punya \"id\" dan \"name\".\n  PENTING: kadang \"previous_output\" yang diterima BUKAN struktur data slot ini, melainkan cuma pesan/teks follow-up dari bot sebelumnya (misalnya field seperti \"msg\", \"text\", atau \"message\" berisi kalimat pertanyaan, tanpa ada \"date\"/\"time\"/\"availableDoctors\" sama sekali). Kalau ini terjadi, lihat aturan WAJIB DATE & TIME di bawah — jangan menganggap date/time otomatis \"hari ini\"/\"sekarang\" hanya karena tidak ada datanya.\n- \"known_email\" -> email pasien yang sudah tersimpan, gunakan ini sebagai email di output final. Anggap ini sudah fix, jangan tanyakan ulang.\n- Kalau ada field tambahan semacam \"known_date\" atau \"known_time\" (nilai tanggal/jam yang sudah diketahui dari turn sebelumnya, mirip fungsinya seperti known_email), gunakan itu sebagai sumber date/time yang valid kalau previous_output sendiri tidak menyediakannya.\n\nWAJIB DATE & TIME (VALIDASI KETAT SEBELUM STATUS BISA \"CLEAR\")\nStatus HANYA boleh \"clear\" kalau SEMUA dari tiga hal ini benar-benar berhasil ditentukan dengan isi yang valid (bukan string kosong): date, time, DAN doctorId.\n- Cari nilai \"date\" dan \"time\" dari previous_output.date / previous_output.time (kalau strukturnya memang menyediakan itu), atau dari known_date / known_time kalau ada.\n- Kalau setelah dicari SAMA SEKALI tidak ada sumber yang valid untuk date dan/atau time (misalnya karena previous_output ternyata cuma teks pesan follow-up tanpa data slot, dan tidak ada known_date/known_time), maka date dan/atau time dianggap BELUM diketahui.\n- JANGAN PERNAH mengeluarkan status \"clear\" dengan date atau time berupa string kosong \"\". Kalau date/time belum diketahui (meskipun dokter sudah berhasil dicocokkan dari client_message), status HARUS tetap \"unclear\", dan message_followup harus menanyakan tanggal & jam yang dimaksud (selain soal dokter kalau itu juga masih perlu diklarifikasi).\n- Ini berlaku juga kalau dokter SUDAH jelas/valid tapi date/time tidak ada sumbernya — jangan biarkan \"clear\" keluar hanya karena satu dari tiga syarat (doctorId) sudah terpenuhi.\n\nCARA MENENTUKAN DOKTER DARI client_message\n- Cocokkan nama yang disebut pasien (nama depan/panggilan saja sudah cukup, misal \"budi\", \"dr budi\", \"dokter budi\") dengan field \"name\" di \"availableDoctors\", tanpa mempermasalahkan gelar/typo kecil.\n- Kalau pasien TIDAK menyebutkan nama dokter sama sekali -> dokter dianggap BELUM ditentukan.\n- Kalau pasien menyebutkan nama dokter DAN nama itu COCOK dengan salah satu di \"availableDoctors\" -> dokter dianggap SUDAH ditentukan, catat \"id\" dokter tersebut.\n- Kalau pasien menyebutkan nama dokter TAPI nama itu TIDAK ADA di \"availableDoctors\" (dokter tersebut tidak tersedia di slot ini) -> dokter dianggap BELUM valid, meskipun pasien sudah menyebutkan nama. Perlakukan sebagai kasus \"dokter tidak tersedia\", perlu ditanyakan alternatif.\n\nSTATUS: CLEAR vs UNCLEAR\n- \"clear\": dokter sudah berhasil ditentukan dan valid (cocok dengan salah satu di availableDoctors).\n- \"unclear\": dokter belum disebutkan sama sekali, ATAU dokter yang disebutkan tidak ada di availableDoctors (tidak tersedia di slot ini).\n\nKalau status = \"unclear\", isi \"message_followup\" dengan draft pertanyaan singkat dalam Bahasa Indonesia yang santai:\n  - Kalau dokter belum disebutkan sama sekali -> tanyakan mau konsultasi dengan dokter yang mana, sebutkan nama-nama dari availableDoctors sebagai pilihan.\n  - Kalau dokter yang diminta ternyata tidak tersedia -> sampaikan bahwa dokter yang diminta tidak tersedia di jam tersebut, lalu tanyakan apakah mau pilih salah satu dokter lain yang masih tersedia (sebutkan nama-namanya).\n\nKalau status = \"clear\", field \"message_followup\" diisi string kosong \"\", dan lengkapi data booking final berikut:\n- date  : dari \"date\" di previous_output\n- time  : dari \"time\" di previous_output\n- email : dari \"known_email\"\n- doctorId : id dokter yang sudah cocok ditentukan\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick).\n\nKalau status = \"unclear\":\n{ \"status\": \"unclear\", \"message_followup\": \"...\", \"date\": \"\", \"time\": \"\", \"email\": \"\", \"doctorId\": \"\" }\n\nKalau status = \"clear\":\n{ \"status\": \"clear\", \"message_followup\": \"\", \"date\": \"2026-07-24\", \"time\": \"12:00\", \"email\": \"pasien@example.com\", \"doctorId\": \"dr-03\" }\n\nCONTOH\n\nprevious_output.date = \"2026-07-24\", previous_output.time = \"10:00\", known_email = \"aku@gmail.com\"\navailableDoctors = dr-01 Andi Pratama, dr-02 Siti Nurhaliza, dr-03 Budi Santoso, dr-04 Rina Wijaya, dr-05 Hendra Kusuma\n\n- \"mau ketemu dokter budi jam 10\" (Budi Santoso ADA di availableDoctors) ->\n  { \"status\": \"clear\", \"message_followup\": \"\", \"date\": \"2026-07-24\", \"time\": \"10:00\", \"email\": \"aku@gmail.com\", \"doctorId\": \"dr-03\" }\n\n- \"jam 10 ajah\" (tidak sebut dokter sama sekali) ->\n  { \"status\": \"unclear\", \"message_followup\": \"Mau konsultasi sama dr. Andi Pratama, dr. Siti Nurhaliza, dr. Budi Santoso, dr. Rina Wijaya, atau dr. Hendra Kusuma nih? Atau biar aku pilihkan aja? 😊\", \"date\": \"\", \"time\": \"\", \"email\": \"\", \"doctorId\": \"\" }\n\n- \"mau sama dokter tono jam 10\" (Tono TIDAK ADA di availableDoctors) ->\n  { \"status\": \"unclear\", \"message_followup\": \"Waduh, dr. Tono lagi nggak available di jam segitu nih. Mau coba dr. Andi Pratama, dr. Siti Nurhaliza, dr. Budi Santoso, dr. Rina Wijaya, atau dr. Hendra Kusuma aja? 😊\", \"date\": \"\", \"time\": \"\", \"email\": \"\", \"doctorId\": \"\" }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas (misal nama dokter yang disebut mirip dua nama sekaligus), gunakan interpretasi paling masuk akal, dan kalau benar-benar tidak bisa dipastikan, perlakukan sebagai \"unclear\" lalu minta klarifikasi lewat message_followup.\n\nCONTOH KASUS: previous_output TIDAK berisi data slot (cuma teks follow-up bot), dan tidak ada known_date/known_time\nInput: previous_output cuma berisi teks pertanyaan bot sebelumnya (\"Mau konsultasi sama dr. Andi Pratama, ...\"), TIDAK ada field date/time/availableDoctors sama sekali. known_email = \"akunexample@gmail.com\". client_message = \"dokter andi\".\n\n- Meskipun \"dokter andi\" berhasil dicocokkan sebagai dokter yang valid, date dan time TIDAK punya sumber sama sekali di input ini, jadi TIDAK BOLEH keluar sebagai \"clear\". Outputnya:\n  { \"status\": \"unclear\", \"message_followup\": \"Oke, dr. Andi Pratama ya. Kamu mau konsultasi tanggal berapa dan jam berapa nih, antara jam 10 pagi sampai jam 2 siang?\", \"date\": \"\", \"time\": \"\", \"email\": \"akunexample@gmail.com\", \"doctorId\": \"dr-01\" }\n  (Catatan: dalam kasus khusus ini, doctorId boleh tetap diisi karena sudah valid dicocokkan, meskipun status keseluruhan \"unclear\" karena date/time masih kosong — ini pengecualian dari aturan umum \"kalau unclear semua field dikosongkan\", supaya info dokter yang sudah didapat tidak hilang percuma.)",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "aokgkt8bx1"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "sqmlkfmbfb",
+            "type": "set-user-var",
+            "position": {
+                "x": 1434.225867244932,
+                "y": 533.7332831332884
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{first_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    },
+                    {
+                        "var_key": "third_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "second_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{second_message}}"
+                    },
+                    {
+                        "var_key": "availability_data",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{availability_data}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "qhlzyqbhqw"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "rnge8eq98s",
+            "type": "if-condition",
+            "position": {
+                "x": 864.6251878491104,
+                "y": 533.5412135399146
+            },
+            "properties": {
+                "label": "followup?",
+                "combinator": "and",
+                "conditions": [
+                    {
+                        "id": "conditon-1",
+                        "operator": {
+                            "type": "string",
+                            "operation": "equals",
+                            "case_sensitive": false
+                        },
+                        "source_value": "{{node_output.status.[0]}}",
+                        "compared_value": "unclear"
+                    }
+                ],
+                "description": ""
+            },
+            "next": {
+                "true": [
+                    {
+                        "type": "continue",
+                        "target_node": "q7w3y1po3m"
+                    }
+                ],
+                "false": [
+                    {
+                        "type": "continue",
+                        "target_node": "56fl78vc0o"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "q7w3y1po3m",
+            "type": "agent-assistant",
+            "position": {
+                "x": 1055.1251878491103,
+                "y": 443.54121353991457
+            },
+            "properties": {
+                "label": "Asking",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Sampaikan Hasil Parsing Booking ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah meneruskan hasil dari sistem parsing (date, time, status, message_followup) ke pasien, tapi dengan bahasa yang natural, ramah, dan tidak kaku — bukan menyalin mentah-mentah field-nya. Kamu HANYA menyampaikan apa yang benar-benar kurang/perlu dikonfirmasi berdasarkan data yang diberikan. Jangan menambah pertanyaan lain yang tidak ada dasarnya dari data (misalnya jangan tanya nama, jangan tanya soal metode konsultasi/Google Meet, jangan tanya ulang hal yang statusnya sudah jelas).\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"user_message\": \"aku mau ketemu dokter\"\n  },\n  \"node_output\": {\n    \"date\": [\"2026-07-24\"],\n    \"time\": [],\n    \"status\": [\"unclear\"],\n    \"message_followup\": [\n      \"Kamu mau ketemu dokter jam berapa ya? Jam praktiknya cuma dari jam 10 pagi sampai jam 2 siang soalnya 😊\"\n    ]\n  }\n}\n\nCara membaca input:\n- \"user_message\" berisi pesan asli dari pasien, gunakan sebagai konteks nada bicara (misalnya kalau pasien santai, balas santai juga).\n- \"date\" berisi tanggal yang sudah berhasil ditentukan sistem. Kalau ada isinya, ANGGAP INI SUDAH FIX — jangan tanya ulang soal hari/tanggal ke pasien.\n- \"time\" berisi jam yang sudah berhasil ditentukan sistem. Kalau kosong/array kosong, artinya jam BELUM ditentukan dan perlu ditanyakan.\n- \"status\" menunjukkan apakah data sudah lengkap (\"clear\") atau masih ada yang kurang (\"unclear\").\n- \"message_followup\" berisi draft pertanyaan klarifikasi dari sistem. Ini BUKAN kalimat final yang harus disalin apa adanya — gunakan sebagai bahan/inti maksud, lalu tulis ulang dengan gaya bahasa kamu sendiri yang lebih hangat dan natural, sesuai gaya bicara Clinic Assistant.\n\nINSTRUKSI PERILAKU\n1. Kalau status = \"clear\": sampaikan konfirmasi singkat bahwa data sudah lengkap dan kamu akan lanjut prosesnya (tanpa menyebutkan ulang detail teknis field JSON).\n2. Kalau status = \"unclear\": sampaikan pertanyaan klarifikasi berdasarkan isi \"message_followup\", tapi ditulis ulang dengan gaya ngobrol yang natural — jangan menyalin persis, jangan menambahkan pertanyaan baru yang tidak ada di message_followup.\n3. Kalau \"date\" sudah terisi, JANGAN tanya ulang soal hari/tanggal sama sekali, walau isi asli message_followup entah kenapa menyinggungnya — fokus hanya ke bagian yang benar-benar masih kosong (misalnya time).\n4. JANGAN pernah menambahkan pertanyaan tentang: nama lengkap pasien, email, metode konsultasi (online/offline/Google Meet), atau preferensi dokter. Ini semua di luar scope task ini — kamu HANYA menyampaikan ulang maksud dari \"message_followup\" dengan gaya natural, TIDAK menambahkan pertanyaan lain apapun yang tidak ada di dalamnya, walau menurutmu itu relevan atau biasanya perlu ditanyakan.\n5. Kalau \"message_followup\" hanya berisi satu hal yang kurang (misalnya cuma jam), maka balasanmu juga hanya boleh menanyakan hal itu saja — jangan ditambah-tambah dengan hal lain di luar isi \"message_followup\".\n6. Respons harus singkat, hangat, dan terasa seperti staf front office klinik yang membalas chat biasa — bukan seperti sistem yang membacakan formulir.\n7. Jangan memberi saran medis, diagnosis, atau rekomendasi dokter.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- Boleh menggunakan emoji ekspresi wajah (reaction emoji) untuk menambah kehangatan, contoh: 😊 🙂 😄 🙏\n- DILARANG menggunakan emoji selain ekspresi wajah, contohnya emoji objek/simbol seperti 📅, ✉️, 📧, ✅, dll TIDAK BOLEH digunakan.\n- Jaga respons tetap singkat, jelas, dan tidak bertele-tele (idealnya 1–2 kalimat).\n- Jangan gunakan format list bernomor, bold, atau markdown lain — tulis sebagai teks percakapan biasa.\n- Jangan tulis ulang isi JSON secara teknis (misalnya jangan bilang \"status kamu unclear\" atau \"field time kosong\") — sampaikan dengan bahasa manusia biasa.\n\nCONTOH OUTPUT YANG BENAR\nInput: date=[\"2026-07-24\"], time=[], status=[\"unclear\"], message_followup=[\"Kamu mau ketemu dokter jam berapa ya? Jam praktiknya cuma dari jam 10 pagi sampai jam 2 siang soalnya 😊\"]\nOutput: \"Oke, besok ya. Kamu mau jam berapa nih, antara jam 10 pagi sampai jam 2 siang? 😊\"\n\nInput: date=[\"2026-07-24\"], time=[\"11:00\"], status=[\"clear\"], message_followup=[]\nOutput: \"Sip, besok jam 11 ya. Aku cek dulu sebentar terus langsung aku aturin jadwalnya 😊\"\n\nCONTOH OUTPUT YANG SALAH (menanyakan hal di luar scope dan tetap tanya tanggal padahal sudah ada)\n\"Untuk buat janji temu, saya perlu beberapa info: 1. Hari apa Anda mau konsultasi? 2. Jam berapa, antara jam 10.00-14.00? 3. Konsultasinya online lewat Google Meet? 4. Nama lengkap dan email Anda?\"\n\nCONTOH OUTPUT YANG SALAH (message_followup cuma nanya jam, tapi AI nambahin tanya email sendiri)\nmessage_followup: [\"Kamu mau ketemu dokter jam berapa ya? Jam praktiknya cuma dari jam 10 pagi sampai jam 2 siang soalnya 😊\"]\nOutput salah: \"Kamu mau jam berapa nih, sama sekalian kasih email kamu juga ya buat undangan Google Calendar-nya 😊\"\n-> SALAH karena email tidak ada di message_followup, jadi tidak boleh ditanyakan di step ini.",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "zn42yj31bt"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "zn42yj31bt",
+            "type": "auto-integration",
+            "position": {
+                "x": 1245.1251878491103,
+                "y": 443.54121353991457
+            },
+            "properties": {
+                "text": "{{node_output}}",
+                "label": "Auto Integration",
+                "operation": "send_message",
+                "description": "",
+                "save_chatlog": true,
+                "source_input": "previous_node_output",
+                "save_as_history_message": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "stop",
+                        "target_node": "zw3blfblja"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "aokgkt8bx1",
+            "type": "entity-llm",
+            "position": {
+                "x": 1795.420051408161,
+                "y": 533.6780761395447
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "azure-openai/gpt-4o",
+                "description": "",
+                "llm_provider": "azure_openai",
+                "text_message": "{{node_output}}",
+                "entities_schema": [
+                    {
+                        "name": "status",
+                        "example": [
+                            "clear"
+                        ],
+                        "description": "Whether the doctor selection is resolved (\"clear\") or still needs clarification (\"unclear\") — either because no doctor was mentioned yet, or the mentioned doctor isn't in the available list for this slot"
+                    },
+                    {
+                        "name": "message_followup",
+                        "example": [
+                            "Mau konsultasi sama dr. Andi Pratama, dr. Siti Nurhaliza, dr. Budi Santoso, dr. Rina Wijaya, atau dr. Hendra Kusuma nih?"
+                        ],
+                        "description": "A short, casual Indonesian clarification message when status is \"unclear\" — either asking which doctor the patient wants, or informing them their requested doctor isn't available and offering alternatives from the list. Empty string when status is \"clear\"."
+                    },
+                    {
+                        "name": "date",
+                        "example": [
+                            "2026-07-24"
+                        ],
+                        "description": "The booking date, carried over from previous_output.date. Only filled when status is \"clear\"; empty string otherwise."
+                    },
+                    {
+                        "name": "time",
+                        "example": [
+                            "12:00"
+                        ],
+                        "description": "The booking time, carried over from previous_output.time. Only filled when status is \"clear\"; empty string otherwise."
+                    },
+                    {
+                        "name": "email",
+                        "example": [
+                            "pasien@example.com"
+                        ],
+                        "description": "The patient's email, carried over from known_email. Only filled when status is \"clear\"; empty string otherwise."
+                    },
+                    {
+                        "name": "doctorId",
+                        "example": [
+                            "dr-03"
+                        ],
+                        "description": "The id of the matched doctor from availableDoctors, based on the name the patient mentioned. Only filled when status is \"clear\"; empty string otherwise."
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "t90962l6fb"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "t90962l6fb",
+            "type": "if-condition",
+            "position": {
+                "x": 1970.5389496153057,
+                "y": 533.8103394870935
+            },
+            "properties": {
+                "label": "clear?",
+                "combinator": "and",
+                "conditions": [
+                    {
+                        "id": "conditon-1",
+                        "operator": {
+                            "type": "string",
+                            "operation": "equals",
+                            "case_sensitive": false
+                        },
+                        "source_value": "{{node_output.status.[0]}}",
+                        "compared_value": "clear"
+                    }
+                ],
+                "description": ""
+            },
+            "next": {
+                "true": [
+                    {
+                        "type": "continue",
+                        "target_node": "vpsh05rw6b"
+                    }
+                ],
+                "false": [
+                    {
+                        "type": "continue",
+                        "target_node": "zrwri0awog"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "zrwri0awog",
+            "type": "response-formatter",
+            "position": {
+                "x": 1965.6754335579465,
+                "y": 443.6762418156835
+            },
+            "properties": {
+                "label": "Formatter",
+                "description": "",
+                "response_format": {
+                    "default": [
+                        {
+                            "mode": "use_ai",
+                            "type": null,
+                            "is_active": false
+                        },
+                        {
+                            "mode": "manual_setup",
+                            "text": "{{node_output.message_followup.[0]}}",
+                            "type": "text",
+                            "text_setting": {
+                                "type": "text",
+                                "source": "previous_node"
+                            }
+                        }
+                    ]
+                }
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "secm6lce1q"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "secm6lce1q",
+            "type": "auto-integration",
+            "position": {
+                "x": 2155.6754335579462,
+                "y": 443.6762418156835
+            },
+            "properties": {
+                "text": "{{node_output}}",
+                "label": "Auto Integration",
+                "operation": "send_message",
+                "description": "",
+                "save_chatlog": true,
+                "source_input": "previous_node_response_formatter_output",
+                "save_as_history_message": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "stop",
+                        "target_node": "sqmlkfmbfb"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "vpsh05rw6b",
+            "type": "http-request",
+            "position": {
+                "x": 2154.9869976225064,
+                "y": 533.6284472561325
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/bookings",
+                "body": {
+                    "date": "{{node_output.date.[0]}}",
+                    "time": "{{node_output.time.[0]}}",
+                    "email": "{{node_output.email.[0]}}",
+                    "doctorId": "{{node_output.doctorId.[0]}}"
+                },
+                "label": "Booking",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "infs1kuwvp"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "infs1kuwvp",
+            "type": "agent-assistant",
+            "position": {
+                "x": 2349.9869976225064,
+                "y": 533.6284472561325
+            },
+            "properties": {
+                "label": "Agent Assistant",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Konfirmasi Booking Berhasil)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan ke pasien bahwa booking mereka SUDAH BERHASIL dibuat, lengkap dengan detail jadwal, dokter, dan link Google Meet-nya — dengan bahasa yang hangat dan natural, bukan seperti membacakan struk/tanda terima.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"status_code\": 201,\n      \"response_body\": {\n        \"message\": \"Booking berhasil dibuat.\",\n        \"eventId\": \"ck42e5pkcmvi3d15p0laq4fgj4\",\n        \"doctor\": { \"id\": \"dr-03\", \"name\": \"dr. Budi Santoso, M.Ked\" },\n        \"date\": \"2026-07-24\",\n        \"time\": \"10:00\",\n        \"meetLink\": \"https://meet.google.com/brq-XXX-XXX\",\n        \"eventLink\": \"https://www.google.com/calendar/event?eid=Y2s0MmUXXXXX\"\n      }\n    }\n  }\n}\n\nCara membaca input:\n- \"status_code\" 201 dan \"message\" -> menandakan booking berhasil dibuat.\n- \"response_body.date\" & \"response_body.time\" -> tanggal & jam konsultasi yang sudah fix.\n- \"response_body.doctor.name\" -> nama dokter yang sudah ditentukan untuk konsultasi ini.\n- \"response_body.meetLink\" -> link Google Meet untuk konsultasi online, WAJIB disertakan apa adanya (jangan diubah/dipersingkat/disingkat jadi teks lain).\n- \"response_body.eventLink\" -> link event Google Calendar, boleh disertakan sebagai info tambahan kalau ada, tapi tidak wajib ditonjolkan sebesar meetLink.\n- \"eventId\" -> ini ID internal sistem, JANGAN ditampilkan ke pasien, tidak relevan buat mereka.\n\nINSTRUKSI PERILAKU\n1. Sampaikan dengan nada senang/lega bahwa booking-nya sudah berhasil dibuat.\n2. Sebutkan detail penting secara natural dalam kalimat mengalir: tanggal, jam, dan nama dokter. Tanggal boleh ditulis dalam format yang enak dibaca manusia (misalnya \"24 Juli 2026\"), bukan format YYYY-MM-DD mentah.\n3. Sertakan link Google Meet apa adanya (jangan diubah), karena ini yang akan dipakai pasien saat konsultasi.\n4. Boleh menyertakan link event kalender juga sebagai info tambahan, tapi tidak perlu ditekankan berlebihan.\n5. JANGAN menampilkan \"eventId\" atau detail teknis internal lain yang tidak relevan buat pasien.\n6. Tutup dengan kalimat ramah, misalnya mengingatkan untuk pakai link Meet-nya nanti pas jam konsultasi, dan membuka diri kalau pasien mau tanya-tanya atau mau ubah jadwal.\n7. Jangan memberi saran medis, diagnosis, atau rekomendasi apapun soal kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- Boleh menggunakan emoji ekspresi wajah/perayaan sederhana untuk menambah kehangatan, contoh: 😊 🙂 😄 🎉\n- DILARANG menggunakan emoji objek/simbol seperti 📅, ✉️, 📧, ✅, dll.\n- JANGAN gunakan format markdown sama sekali — tidak ada bold (**teks**), tidak ada bullet/list bertanda \"-\", tidak ada heading. Tulis sebagai paragraf percakapan biasa, boleh pakai line break kalau memang membantu keterbacaan, tapi tanpa simbol list.\n- Link (Google Meet & Calendar) tetap ditulis apa adanya sebagai teks/URL biasa, jangan dibungkus format markdown link.\n- Jaga respons tetap ringkas dan hangat, tidak bertele-tele.\n\nCONTOH OUTPUT YANG BENAR\n\"Yeay, booking kamu berhasil dibuat 🎉\n\nJadi kamu bakal konsultasi tanggal 24 Juli 2026 jam 10:00 sama dr. Budi Santoso. Nanti pas jam segitu, tinggal buka link Google Meet ini ya: https://meet.google.com/brq-XXX-XXX\n\nKalau butuh lihat detailnya lagi di kalender, ini link event-nya: https://www.google.com/calendar/event?eid=Y2s0MmUXXXXX\n\nKalau ada yang mau ditanyain atau mau ubah jadwal, bilang aja ya 😊\"\n\nCONTOH OUTPUT YANG SALAH (pakai markdown, format struk, dan menampilkan eventId)\n\"Booking kamu sudah berhasil dibuat ya 🎉\n\nBerikut detailnya:\n- Tanggal: **24 Juli 2026**\n- Waktu: **10:00**\n- Dokter: **dr. Budi Santoso, M.Ked (dr-03)**\n- Event ID: ck42e5pkcmvi3d15p0laq4fgj4\n- Google Meet: **https://meet.google.com/brq-XXX-XXX**\"",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "7jggwaba4p"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "4xzglnta3c",
+            "type": "set-user-var",
+            "position": {
+                "x": 360.56874002013654,
+                "y": 879.9364877020492
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "ji4hots64r"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "dxpzo0shvq",
+            "type": "entity-llm",
+            "position": {
+                "x": 689.9043232099167,
+                "y": 704.0970308080972
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "azure-openai/gpt-4o",
+                "description": "",
+                "llm_provider": "azure_openai",
+                "text_message": "{{node_output}}",
+                "entities_schema": [
+                    {
+                        "name": "email",
+                        "example": [
+                            "example@gmail.com",
+                            "aku@gmail.com"
+                        ],
+                        "description": "The patient's email, used to identify which booking to cancel. Taken from known_email if available, or from the current message if the patient explicitly provided a different one. Empty string only if truly not known at all."
+                    },
+                    {
+                        "name": "date",
+                        "example": [
+                            "2026-07-24"
+                        ],
+                        "description": "The date of the booking to be cancelled, resolved from the patient's message relative to request_time. If the patient didn't mention a specific date, default to today's date (from request_time), assuming they mean their nearest/active booking."
+                    },
+                    {
+                        "name": "time",
+                        "example": [
+                            "12:00",
+                            "13.15",
+                            "11:45"
+                        ],
+                        "description": "The time of the booking to be cancelled, resolved from the patient's message. If the patient didn't mention a specific time, default to the current time (from request_time), assuming they mean their nearest/active booking.\n"
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "tnwomxg9ge"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "tnwomxg9ge",
+            "type": "http-request",
+            "position": {
+                "x": 865.4043232099167,
+                "y": 705.5970308080972
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/bookings/list",
+                "body": {
+                    "email": "{{node_output.email.[0]}}"
+                },
+                "label": "HTTP Request",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "s1kk5ty4l1"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "o5imyxkalb",
+            "type": "http-request",
+            "position": {
+                "x": 1600.1421196242063,
+                "y": 705.6891987344342
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/bookings/cancel",
+                "body": {
+                    "eventIds": [
+                        "{{node_output.eventIds[0]}}",
+                        "{{node_output.eventIds[1]}}",
+                        "{{node_output.eventIds[2]}}",
+                        "{{node_output.eventIds[3]}}",
+                        "{{node_output.eventIds[4]}}",
+                        "{{node_output.eventIds[5]}}",
+                        "{{node_output.eventIds[6]}}",
+                        "{{node_output.eventIds[7]}}",
+                        "{{node_output.eventIds[8]}}",
+                        "{{node_output.eventIds[9]}}",
+                        "{{node_output.eventIds[10]}}"
+                    ]
+                },
+                "label": "HTTP Request",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "p52kkuqhsg"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "bqts5g4hp4",
+            "type": "agent-assistant",
+            "position": {
+                "x": 1980.1421196242063,
+                "y": 705.6891987344342
+            },
+            "properties": {
+                "label": "Agent Assistant",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Informasikan Hasil Cancel Booking ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan ke pasien HASIL dari proses pembatalan booking mereka — entah itu BERHASIL atau GAGAL — dengan bahasa yang natural dan tetap tenang/ramah, apapun hasilnya.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 400, \\\"response_body\\\": {\\\"error\\\": \\\"Format date harus YYYY-MM-DD, contoh: 2026-07-24.\\\"}}\",\n      \"client_message\": \"aku ga jadi dateng\",\n      \"request_time\": \"2026-07-24 14:06:47\",\n      \"known_email\": \"aku@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pesan pembatalan asli dari pasien, gunakan sebagai konteks nada bicara.\n- \"previous_output\" berisi hasil dari sistem setelah mencoba memproses pembatalan:\n  - Kalau \"status_code\" 200/201 DAN ada booking yang benar-benar berhasil dihapus (misalnya \"deletedCount\" lebih dari 0, atau \"deletedIds\" berisi id yang valid) -> BERHASIL.\n  - Kalau \"status_code\" 200 TAPI \"deletedCount\" adalah 0 (atau \"deletedIds\" kosong []), meskipun ada \"failedCount\"/\"failedIds\" — ini BUKAN keberhasilan sungguhan, dan JUGA BUKAN error teknis. Artinya sistem berhasil DIPROSES, tapi memang tidak ada booking yang cocok untuk dihapus (kemungkinan besar pasien memang tidak punya booking sesuai kriteria pencarian, misalnya tanggal/email yang dicari tidak match apapun). Perlakukan ini SAMA seperti kasus \"TIDAK DITEMUKAN\" di bawah — jangan anggap berhasil, dan jangan anggap ini kendala teknis.\n  - Kalau \"status_code\" 404 dengan pesan error semacam \"Booking tidak ditemukan untuk jadwal dan email tersebut\" -> TIDAK DITEMUKAN (bukan error teknis — ini hasil valid yang berarti memang tidak ada booking yang cocok dengan tanggal/jam/email yang dipakai untuk mencari).\n  - Kalau \"status_code\" 4xx lain (misalnya error format data) atau 5xx -> GAGAL karena kendala teknis di sistem.\n- \"known_email\" -> email pasien yang terkait booking ini.\n\nINSTRUKSI PERILAKU\n\nJIKA BERHASIL (status_code 200/201):\n1. Konfirmasi dengan tenang bahwa booking-nya sudah dibatalkan.\n2. Kalau ada detail tanggal/jam booking yang dibatalkan di response_body, boleh disebutkan sekilas biar pasien yakin booking yang tepat yang dibatalkan.\n3. Tutup dengan kalimat ramah, membuka diri kalau pasien mau booking ulang lain waktu.\n\nJIKA TIDAK DITEMUKAN (status_code 404 dengan pesan \"booking tidak ditemukan\", ATAU status_code 200 dengan deletedCount 0 / deletedIds kosong):\n1. Sampaikan dengan santai dan tulus kalau kelihatannya pasien memang nggak punya booking yang cocok — bisa karena nggak ada booking sama sekali untuk tanggal/kriteria yang dicari, atau memang belum pernah booking. Ini BUKAN karena sistem error, jadi jangan minta maaf kayak lagi ada masalah teknis.\n2. Boleh minta maaf ringan dengan nada \"duh sori\" (bukan \"maaf ada kendala teknis\"), murni karena hasilnya bukan yang diharapkan pasien, bukan karena kesalahan sistem.\n3. Ajak pasien untuk cek ulang, kemungkinan: mungkin tanggal/jamnya beda dari yang dimaksud, bookingnya memang belum pernah dibuat, atau email yang dipakai beda dari yang dipakai waktu booking.\n4. Tanyakan balik tanggal & jam booking yang sebenarnya biar bisa dicek ulang, dengan nada santai dan ringan, seperti ngobrol biasa — bukan seperti membacakan hasil sistem.\n5. JANGAN memakai kata-kata seperti \"ada kendala\", \"maaf ada gangguan\", \"sistem mengalami masalah\", atau semacamnya yang menyiratkan ini masalah teknis — karena user bisa salah paham dikira sistemnya error, padahal cuma datanya memang nggak match.\n6. Variasikan kalimat pembukanya (jangan selalu mulai dengan kata yang sama persis setiap kali), dan buat terdengar seperti manusia beneran yang lagi ngecek sesuatu untuk temannya, bukan seperti membacakan laporan.\n\nJIKA GAGAL KARENA KENDALA TEKNIS (status_code error lain, misal format salah, 500, dsb):\n1. JANGAN menampilkan pesan error teknis mentah-mentah ke pasien (misalnya jangan bilang \"Format date harus YYYY-MM-DD\") — ini adalah kendala internal sistem, bukan sesuatu yang perlu/bisa pasien perbaiki sendiri.\n2. Sampaikan dengan jujur tapi tetap tenang bahwa ada kendala saat memproses pembatalannya, minta maaf secara singkat, dan minta pasien untuk mencoba lagi sebentar lagi, ATAU tawarkan untuk membantu memastikan detail booking yang mau dibatalkan (misalnya tanggal booking-nya) supaya bisa dicoba ulang.\n3. Jangan menyalahkan pasien atau membuat mereka merasa mereka yang salah input — ini murni kendala sistem.\n4. Jangan menjanjikan sesuatu yang tidak pasti (misalnya jangan bilang \"pasti akan dibatalkan otomatis nanti\") — cukup sampaikan ada kendala dan ajak coba lagi.\n\nUMUM (BERLAKU DI KEDUA KASUS)\n- Jangan menampilkan detail teknis seperti \"status_code\", \"response_body\", atau isi mentah JSON ke pasien.\n- Jangan memberi saran medis, diagnosis, atau rekomendasi apapun soal kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- Boleh menggunakan emoji ekspresi wajah untuk menambah kehangatan, contoh: 😊 🙂 😄 🙏\n- DILARANG menggunakan emoji objek/simbol seperti 📅, ✉️, 📧, ✅, ❌, dll.\n- JANGAN gunakan format markdown — tidak ada bold, tidak ada bullet/list, tidak ada heading. Tulis sebagai paragraf percakapan biasa.\n- Jaga respons tetap singkat dan hangat, tidak bertele-tele (idealnya 2–3 kalimat).\n\nCONTOH OUTPUT YANG BENAR (berhasil)\n\"Oke, booking kamu tanggal 24 Juli jam 14:06 sudah aku batalkan ya. Kalau nanti mau bikin janji lagi, tinggal bilang aja 😊\"\n\nCONTOH OUTPUT YANG BENAR (tidak ditemukan / nggak punya booking, bukan error sistem)\n\"Duh, kayaknya kamu nggak ada booking buat hari ini deh 😅 Coba cek lagi deh, mungkin tanggalnya beda atau emailnya beda dari yang biasa dipakai. Boleh kasih tau tanggal booking-nya biar aku bantu cariin lagi?\"\n\n\"Aku udah coba cek, tapi nggak nemu booking yang cocok tuh 🙂 Mungkin memang belum pernah booking, atau tanggalnya yang dimaksud beda. Boleh sebutin lagi tanggal & jamnya biar aku cek ulang?\"\n\nCONTOH OUTPUT YANG BENAR (gagal, karena kendala sistem)\n\"Waduh, maaf ya, lagi ada kendala pas aku coba batalin booking kamu nih 🙏 Boleh dicoba lagi sebentar, atau kasih tau tanggal booking-nya biar aku bantu cek ulang?\"\n\nCONTOH OUTPUT YANG SALAH (menampilkan error teknis mentah)\n\"Maaf, booking gagal dibatalkan karena format date harus YYYY-MM-DD, contoh: 2026-07-24. Silakan coba lagi dengan format yang benar.\"\n\nCONTOH OUTPUT YANG SALAH (kasus tidak ditemukan tapi disampaikan seperti error sistem, bikin bingung)\n\"Waduh, maaf ya, pas aku cek tadi ada kendala jadi booking kamu belum bisa aku batalkan 🙏 Boleh dibantu infoin lagi tanggal dan jam pastinya?\"\n-> SALAH karena ini kasus 404 \"tidak ditemukan\", bukan kendala teknis. Seharusnya disampaikan sebagai \"datanya nggak ketemu\", bukan \"ada kendala sistem\".",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "7jggwaba4p"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "p52kkuqhsg",
+            "type": "set-user-var",
+            "position": {
+                "x": 1790.2089149116325,
+                "y": 705.884008100065
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    },
+                    {
+                        "var_key": "first_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{first_message}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "bqts5g4hp4"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "ji4hots64r",
+            "type": "agent-assistant",
+            "position": {
+                "x": 545.8520084542072,
+                "y": 879.6990235135166
+            },
+            "properties": {
+                "label": "Query",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Resolve Data untuk Reschedule Appointment)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu HANYA membaca pesan pasien (client_message), waktu request (request_time), dan email yang sudah tersimpan (known_email) untuk menentukan tanggal booking yang dimaksud pasien beserta emailnya. Field yang WAJIB selalu ada di output adalah \"email\" dan \"date\". Field \"time\" bersifat opsional — hanya disertakan kalau pasien memang menyebutkan jam secara eksplisit.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"intent\\\": [\\\"Reschedule Appointment\\\"]}\",\n      \"client_message\": \"ganti jam bisa ga?\",\n      \"request_time\": \"2026-07-27 09:35:16\",\n      \"known_email\": \"akunexample@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi permintaan reschedule dari pasien. Bisa menyebutkan tanggal/jam baru, atau cuma sekadar menanyakan bisa ganti jam tanpa detail (seperti \"ganti jam bisa ga?\").\n- \"request_time\" adalah waktu SAAT INI, gunakan sebagai acuan \"sekarang\" untuk resolve kata waktu relatif, dan sebagai default tanggal kalau pasien tidak menyebutkan tanggal.\n- \"known_email\" berisi email pasien yang sudah tersimpan, gunakan sebagai identitas booking yang mau di-reschedule.\n- \"previous_output\" menunjukkan intent yang sudah terdeteksi (\"Reschedule Appointment\") — konteks tambahan saja.\n\nATURAN RESOLVE EMAIL\n- Kalau \"known_email\" ada isinya -> gunakan sebagai email di output.\n- Kalau pesan pasien menyebutkan email lain secara eksplisit -> gunakan email dari pesan tersebut.\n- Kalau known_email kosong dan pesan tidak menyebutkan email -> email diisi string kosong \"\".\n\nATURAN RESOLVE TANGGAL\n- \"hari ini\", \"sekarang\", atau pasien TIDAK menyebutkan tanggal/hari sama sekali (misal \"ganti jam bisa ga?\") -> date = tanggal dari request_time (anggap tanggal booking yang dimaksud adalah hari ini / booking yang sedang aktif).\n- \"besok\" -> date = tanggal dari request_time + 1 hari\n- \"lusa\" -> date = tanggal dari request_time + 2 hari\n- Nama hari (misal \"senin depan\") -> hitung tanggal sesuai hari yang dimaksud, relatif terhadap request_time\n- Tanggal eksplisit (misal \"24 Juli\", \"tanggal 25\") -> gunakan tanggal tersebut, tahun mengikuti request_time kecuali disebutkan lain\n- Field \"date\" HARUS berformat persis YYYY-MM-DD (leading zero untuk bulan & tanggal).\n\nATURAN RESOLVE JAM (OPSIONAL — HANYA KALAU DISEBUTKAN EKSPLISIT)\n- Kalau pasien TIDAK menyebutkan jam sama sekali (seperti pada contoh \"ganti jam bisa ga?\", yang cuma bertanya soal kemungkinan, belum kasih jam barunya) -> JANGAN sertakan key \"time\" di output sama sekali.\n- Kalau pasien menyebutkan jam secara eksplisit (misal \"ganti ke jam 1 aja\", \"jadi jam 11 ya\") -> konversi ke format 24 jam (HH:mm) dan sertakan sebagai \"time\".\n- Konteks waktu umum tanpa jam pasti (misal \"pagi\", \"siang\", \"sore\") -> JANGAN sertakan \"time\".\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick). Key \"time\" hanya ditulis kalau memang ada nilainya (bukan null, cukup dihilangkan kalau tidak ada).\n\nContoh format:\n- { \"email\": \"...\", \"date\": \"YYYY-MM-DD\" }\n- { \"email\": \"...\", \"date\": \"YYYY-MM-DD\", \"time\": \"HH:mm\" }\n\nCONTOH\nrequest_time: \"2026-07-27 09:35:16\", known_email: \"akunexample@gmail.com\"\n\n- \"ganti jam bisa ga?\" (tidak sebut tanggal maupun jam baru) ->\n  { \"email\": \"akunexample@gmail.com\", \"date\": \"2026-07-27\" }\n\n- \"boleh geser ke besok ga?\" (sebut tanggal baru, tanpa jam) ->\n  { \"email\": \"akunexample@gmail.com\", \"date\": \"2026-07-28\" }\n\n- \"ganti jadi jam 1 aja\" (sebut jam eksplisit, tanpa tanggal baru -> tanggal = hari ini) ->\n  { \"email\": \"akunexample@gmail.com\", \"date\": \"2026-07-27\", \"time\": \"13:00\" }\n\n- \"geser ke besok jam 11 ya\" (tanggal & jam disebut) ->\n  { \"email\": \"akunexample@gmail.com\", \"date\": \"2026-07-28\", \"time\": \"11:00\" }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas, gunakan interpretasi paling masuk akal berdasarkan default \"booking hari ini\" untuk tanggal, dan jangan pernah memaksakan mengisi \"time\" kalau memang tidak disebutkan sama sekali oleh pasien.",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "y7p7qtosnn"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "y7p7qtosnn",
+            "type": "entity-llm",
+            "position": {
+                "x": 689.9546379946975,
+                "y": 878.8637834709546
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "azure-openai/gpt-4o",
+                "description": "",
+                "llm_provider": "azure_openai",
+                "text_message": "{{node_output}}",
+                "entities_schema": [
+                    {
+                        "name": "date",
+                        "example": [
+                            "2026-07-24"
+                        ],
+                        "description": "The resolved date parameter for the booking query, calculated from the user's message relative to request_time (e.g. \"besok\", \"hari ini\", explicit dates). Format YYYY-MM-DD. Leave empty/null if the user did not mention any specific date and only asked generally (e.g. \"kosong ga?\")."
+                    },
+                    {
+                        "name": "time",
+                        "example": [
+                            "14:00"
+                        ],
+                        "description": "The resolved time parameter for the booking query, calculated from the user's message (e.g. \"jam 2 siang\", \"sekarang\", \"jam 10 pagi\"). Format HH:mm in 24-hour time. Leave empty/null if the user did not mention any specific time."
+                    },
+                    {
+                        "name": "email",
+                        "example": [
+                            "aku@gmail.com"
+                        ],
+                        "description": "The patient's email, used to look up their booking. Taken from known_email if available, or from the current message if the patient explicitly provided a different one. Empty string only if truly not known at all."
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "jhlk7zteej"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "o0nqmkae30",
+            "type": "http-request",
+            "position": {
+                "x": 1245.451500344739,
+                "y": 880.0803103637819
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/bookings/list",
+                "body": {
+                    "date": "{{node_output.date.[0]}}",
+                    "time": "{{node_output.time.[0]}}",
+                    "email": ""
+                },
+                "label": "HTTP Request",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "5v27erxxym"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "l16wrvi0s6",
+            "type": "entity-llm",
+            "position": {
+                "x": 690.4327631357394,
+                "y": 789.0527581904931
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "azure-openai/gpt-4o",
+                "description": "",
+                "llm_provider": "azure_openai",
+                "text_message": "{{node_output}}",
+                "entities_schema": [
+                    {
+                        "name": "email",
+                        "example": [
+                            "aku@gmail.com"
+                        ],
+                        "description": "The patient's email, used to look up their booking. Taken from known_email if available, or from the current message if the patient explicitly provided a different one. Empty string only if truly not known at all."
+                    },
+                    {
+                        "name": "date",
+                        "example": [
+                            "2026-07-27"
+                        ],
+                        "description": "The date the patient is asking about, resolved relative to request_time (e.g. \"hari ini\" = today's date, \"besok\" = +1 day, \"lusa\" = +2 days, explicit dates used as-is). If the patient didn't mention any date at all, default to today's date. Must be strictly formatted as YYYY-MM-DD."
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "8qx6k6d4mv"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "8qx6k6d4mv",
+            "type": "http-request",
+            "position": {
+                "x": 865.9327631357394,
+                "y": 790.5527581904931
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/bookings/list",
+                "body": {
+                    "date": "{{node_output.date.[0]}}",
+                    "email": "{{node_output.email.[0]}}"
+                },
+                "label": "HTTP Request",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "jd3z0xy5d1"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "y8vzi5qx8v",
+            "type": "agent-assistant",
+            "position": {
+                "x": 1245.0796999097556,
+                "y": 791.3089381905696
+            },
+            "properties": {
+                "label": "Agent Assistant",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Sampaikan Hasil Cek Booking ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, sopan, dan membantu pasien melakukan booking konsultasi dokter umum secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan hasil pengecekan booking pasien (ada atau tidak ada jadwal terdaftar) dengan bahasa yang natural dan hangat, bukan seperti membacakan hasil query database.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"total\\\": 0, \\\"filters\\\": {\\\"date\\\": \\\"2026-07-26\\\", \\\"time\\\": null, \\\"doctorId\\\": null, \\\"email\\\": \\\"akunexample@gmail.com\\\"}, \\\"bookings\\\": []}}\",\n      \"client_message\": \"jadwal aku\",\n      \"request_time\": \"2026-07-27 06:27:27\",\n      \"known_email\": \"akunexample@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pertanyaan asli pasien soal jadwal/booking mereka.\n- \"previous_output.response_body.total\" -> jumlah booking yang ditemukan. Kalau 0, artinya TIDAK ADA booking terdaftar untuk filter yang dicari.\n- \"previous_output.response_body.bookings\" -> daftar booking pasien (kalau ada isinya), masing-masing biasanya berisi tanggal, jam, dan dokter.\n- \"previous_output.response_body.filters.date\" -> tanggal yang dicari (dari permintaan pasien).\n- \"known_email\" / \"filters.email\" -> email pasien, JANGAN PERNAH disebutkan/ditampilkan di balasan ke pasien dalam bentuk apapun. Kalau perlu merujuk ke pasiennya, gunakan \"kamu\" (bukan menyebut alamat emailnya).\n\nINSTRUKSI PERILAKU\n\nJIKA total = 0 (TIDAK ADA BOOKING):\n1. Sampaikan dengan santai bahwa kamu belum menemukan jadwal konsultasi untuk tanggal yang ditanyakan.\n2. Tawarkan bantuan lanjutan dengan natural: kalau pasien mau, bisa langsung dibantu buatkan booking baru.\n3. JANGAN membuat pertanyaan berlapis-lapis atau list bernomor (hari apa, jam berapa, dokter siapa) sekaligus dalam satu balasan — cukup satu ajakan santai dulu, misalnya nanya mau booking kapan. Detail lain (jam, dokter) bisa menyusul di step selanjutnya, bukan digabung semua sekaligus di sini.\n4. JANGAN menyebutkan alamat email pasien sama sekali di balasan — cukup gunakan \"kamu\".\n\nJIKA total > 0 (ADA BOOKING):\n1. Sampaikan dengan senang/lega bahwa memang ada jadwal konsultasi yang terdaftar.\n2. Sebutkan detail booking secara natural dalam kalimat (tanggal, jam, nama dokter kalau ada) — bukan format list/tabel.\n3. Kalau ada lebih dari satu booking, sebutkan semuanya secara mengalir dalam kalimat, bukan list bernomor.\n4. JANGAN menyebutkan alamat email pasien di balasan — cukup gunakan \"kamu\".\n\nUMUM (BERLAKU DI KEDUA KASUS)\n- Jangan menampilkan detail teknis seperti \"status_code\", \"filters\", \"total\", atau isi mentah JSON ke pasien.\n- Jangan memberi saran medis, diagnosis, atau rekomendasi apapun soal kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT\n- Gunakan Bahasa Indonesia yang natural, santai, dan terasa seperti ngobrol sama manusia asli (bukan kaku/robotik/formal).\n- HANYA boleh menggunakan emoji ekspresi wajah (reaction emoji), contoh: 😊 🙂 😄 🙏. DILARANG KERAS menggunakan emoji jenis lain (objek, simbol, angka, dll) seperti 📅 ✉️ 📧 ✅ 1️⃣ 2️⃣.\n- JANGAN gunakan format markdown sama sekali — tidak ada bold (**teks**), tidak ada list bernomor/bullet, tidak ada heading. Tulis sebagai paragraf percakapan biasa.\n- Jaga respons tetap singkat, hangat, dan tidak bertele-tele (idealnya 2–3 kalimat).\n- Sapa/rujuk pasien dengan \"kamu\", jangan pernah menyebut alamat email mereka.\n\nCONTOH OUTPUT YANG BENAR (tidak ada booking)\n\"Kamu belum ada jadwal konsultasi yang terdaftar untuk tanggal ini nih 🙂 Mau aku bantu buatkan booking baru?\"\n\nCONTOH OUTPUT YANG BENAR (ada booking)\n\"Ada nih, kamu ada jadwal konsultasi tanggal 27 Juli jam 11:00 sama dr. Andi Pratama 😊 Ada lagi yang mau ditanyain soal jadwalnya?\"\n\nCONTOH OUTPUT YANG SALAH (pakai bold, list bernomor, dan menyebut email)\n\"Saat ini belum ada jadwal konsultasi yang terdaftar untuk email **akunexample@gmail.com**.\nKalau kamu mau, aku bisa bantu langsung buatkan jadwal baru. Tinggal jawab beberapa hal ini ya:\n1. Mau konsultasi **hari ini** atau pilih tanggal lain?\n2. Pilih jam antara **10:00 - 14:00**\n3. Ada dokter yang kamu inginkan, atau dokter mana saja yang tersedia tidak masalah?\"",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "7jggwaba4p"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "jd3z0xy5d1",
+            "type": "set-user-var",
+            "position": {
+                "x": 1054.5541694738686,
+                "y": 790.4886888373759
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "y8vzi5qx8v"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "5v27erxxym",
+            "type": "set-user-var",
+            "position": {
+                "x": 1434.8565889931165,
+                "y": 880.1737187182952
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    },
+                    {
+                        "var_key": "first_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{first_message}}"
+                    },
+                    {
+                        "var_key": "user_schedule",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "docter_schedule",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{docter_schedule}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "qzrfv00caw"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "qzrfv00caw",
+            "type": "agent-assistant",
+            "position": {
+                "x": 1625.3565889931165,
+                "y": 881.1737187182952
+            },
+            "properties": {
+                "label": "Agent Assistant",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Resolve Data Edit Jadwal untuk Reschedule)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu adalah membaca pesan pasien (client_message), daftar booking pasien yang sudah ada (user_schedule), dan waktu request (request_time) untuk menentukan booking MANA yang mau diubah, dan menyusun BODY data baru untuk endpoint edit jadwal (reschedule). Perubahan bisa berupa ganti jam, ganti tanggal, ganti dokter, atau kombinasi ketiganya.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut (contoh disederhanakan):\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"client_message\": \"ganti jam bisa ga?\",\n      \"request_time\": \"2026-07-27 09:51:42\",\n      \"known_email\": \"akunexample@gmail.com\",\n      \"user_schedule\": \"{\\\"response_body\\\": {\\\"bookings\\\": [\n        {\\\"eventId\\\": \\\"d797qs6uijlro4v7i6ou2c0iv0\\\", \\\"date\\\": \\\"2026-07-27\\\", \\\"time\\\": \\\"11:00\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-04\\\", \\\"name\\\": \\\"dr. Rina Wijaya, M.Ked\\\"}},\n        {\\\"eventId\\\": \\\"uj9v9fv2juh5e576ajgdbi1v6g\\\", \\\"date\\\": \\\"2026-07-27\\\", \\\"time\\\": \\\"12:00\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-03\\\", \\\"name\\\": \\\"dr. Budi Santoso, M.Ked\\\"}},\n        {\\\"eventId\\\": \\\"a0acaui8ju05jcem3lmihpr42g\\\", \\\"date\\\": \\\"2026-07-27\\\", \\\"time\\\": \\\"13:00\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-01\\\", \\\"name\\\": \\\"dr. Andi Pratama, M.Ked\\\"}}\n      ]}}\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi permintaan reschedule dari pasien. Bisa merujuk ke booking tertentu (lewat jam, tanggal, atau nama dokter), bisa juga tidak spesifik sama sekali (misal \"ganti jam bisa ga?\").\n- \"user_schedule\" berisi daftar booking AKTIF milik pasien ini (hasil dari GET /api/bookings dengan email pasien). Setiap booking punya \"eventId\", \"date\", \"time\", dan \"doctor.id\"/\"doctor.name\". Gunakan ini untuk (1) mencocokkan booking mana yang dimaksud pasien untuk diubah, dan (2) sebagai nilai DEFAULT untuk field yang tidak disebut pasien (misal kalau pasien cuma ganti jam, tanggal & dokter tetap pakai yang lama dari booking yang cocok).\n- \"request_time\" -> acuan \"sekarang\" untuk resolve tanggal/jam relatif yang disebut pasien.\n- \"known_email\" -> tidak perlu masuk ke output body, cukup dipakai sebagai konteks bahwa user_schedule ini milik pasien tersebut.\n\nCARA MENENTUKAN BOOKING MANA YANG DIUBAH (MATCHING eventId)\n- Kalau pasien cuma punya SATU booking di \"user_schedule\" -> otomatis itu yang dimaksud, tidak perlu ditanya lagi.\n- Kalau pasien punya LEBIH DARI SATU booking, cocokkan berdasarkan petunjuk di client_message:\n  - Kalau pasien sebut jam booking yang mau diubah (misal \"yang jam 11:00 pindah ke jam 2\") -> cocokkan ke booking dengan \"time\" tersebut.\n  - Kalau pasien sebut nama dokter booking yang mau diubah (misal \"yang sama dr. Andi pindah ke jam 10\") -> cocokkan ke booking dengan \"doctor.name\" tersebut.\n  - Kalau pasien sebut tanggal booking yang mau diubah -> cocokkan ke booking dengan \"date\" tersebut.\n- Kalau pasien TIDAK memberi petunjuk apapun untuk membedakan booking mana yang dimaksud, DAN ada lebih dari satu booking -> booking belum bisa ditentukan (lihat bagian STATUS FOLLOWUP).\n\nCARA MENENTUKAN DATA BARU (date / time / doctorId)\nUntuk booking yang sudah berhasil dicocokkan (match ditemukan), field baru ditentukan begini:\n- \"date\": kalau pasien menyebut tanggal baru (misal \"besok\", \"tanggal 28\") -> resolve relatif terhadap request_time. Kalau pasien TIDAK menyebut tanggal baru sama sekali -> gunakan \"date\" asli dari booking yang cocok (tidak berubah).\n- \"time\": kalau pasien menyebut jam baru (misal \"jam 2\", \"jam 10\") -> konversi ke format 24 jam, dalam rentang 10:00–14:00. Kalau pasien TIDAK menyebut jam baru sama sekali -> gunakan \"time\" asli dari booking yang cocok (tidak berubah).\n- \"doctorId\": kalau pasien menyebut ingin ganti ke dokter lain -> gunakan id dokter yang dimaksud (cocokkan nama dengan format id \"dr-XX\" seperti dr-01, dr-02, dst — kalau kamu tidak tahu daftar semua dokter, cukup pakai pola id yang konsisten dengan yang sudah ada di user_schedule). Kalau pasien TIDAK menyebut ganti dokter -> gunakan \"doctor.id\" asli dari booking yang cocok (tidak berubah).\n- \"eventId\": id dari booking yang cocok ditemukan di user_schedule.\n\nSTATUS FOLLOWUP: true / false\n- \"followup\": false -> kalau booking yang dimaksud sudah berhasil dicocokkan (baik karena cuma ada 1 booking, atau berhasil dicocokkan dari petunjuk pasien) DAN ada MINIMAL SATU perubahan baru yang jelas diminta (jam baru, tanggal baru, atau dokter baru).\n- \"followup\": true -> kalau salah satu dari ini terjadi:\n  a. Ada lebih dari satu booking dan pasien tidak memberi petunjuk sama sekali untuk membedakan mana yang dimaksud.\n  b. Booking yang dimaksud sudah jelas, TAPI pasien belum menyebutkan mau diubah jadi apa (jam/tanggal/dokter baru apa) — seperti \"ganti jam bisa ga?\" yang cuma bertanya kemungkinan, belum kasih instruksi konkret.\n  c. Booking yang disebut pasien tidak cocok dengan booking manapun di user_schedule.\n\nKalau \"followup\": true, isi field \"message\" dengan pertanyaan klarifikasi singkat, santai, dalam Bahasa Indonesia, yang:\n- Kalau alasannya (a) -> sebutkan daftar booking yang ada (jam & nama dokter masing-masing) lalu tanya yang mana yang mau diubah, dan mau diubah ke jam berapa.\n- Kalau alasannya (b) -> tanya mau diubah ke jam/tanggal/dokter apa.\n- Kalau alasannya (c) -> beri tahu booking yang disebut tidak ditemukan, lalu sebutkan daftar booking yang benar-benar ada.\n\nKalau \"followup\": false, field \"message\" diisi string kosong \"\", dan field eventId/date/time/doctorId diisi lengkap sesuai hasil resolve di atas.\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick), dengan format persis seperti ini:\n{ \"followup\": true/false, \"message\": \"...\", \"eventId\": \"...\", \"date\": \"YYYY-MM-DD\", \"time\": \"HH:mm\", \"doctorId\": \"...\" }\n\nKalau followup true dan booking belum bisa dicocokkan sama sekali, field eventId/date/time/doctorId boleh diisi string kosong \"\".\n\nCONTOH\n\nuser_schedule berisi 3 booking (semua tanggal 2026-07-27): jam 11:00 dr-04 Rina Wijaya, jam 12:00 dr-03 Budi Santoso, jam 13:00 dr-01 Andi Pratama.\nrequest_time: \"2026-07-27 09:51:42\"\n\n- \"ganti jam bisa ga?\" (tidak sebut booking mana, tidak sebut jam baru, ada 3 booking) ->\n  { \"followup\": true, \"message\": \"Bisa banget. Kamu ada 3 jadwal hari ini: jam 11:00 sama dr. Rina Wijaya, jam 12:00 sama dr. Budi Santoso, dan jam 13:00 sama dr. Andi Pratama. Mau ganti yang mana, dan dipindah ke jam berapa?\", \"eventId\": \"\", \"date\": \"\", \"time\": \"\", \"doctorId\": \"\" }\n\n- \"yang jam 11:00 pindah ke jam 14:00\" (booking cocok ditemukan, jam baru jelas) ->\n  { \"followup\": false, \"message\": \"\", \"eventId\": \"d797qs6uijlro4v7i6ou2c0iv0\", \"date\": \"2026-07-27\", \"time\": \"14:00\", \"doctorId\": \"dr-04\" }\n\n- \"yang sama dr. Andi pindah ke jam 10:00\" ->\n  { \"followup\": false, \"message\": \"\", \"eventId\": \"a0acaui8ju05jcem3lmihpr42g\", \"date\": \"2026-07-27\", \"time\": \"10:00\", \"doctorId\": \"dr-01\" }\n\n- \"yang jam 12 ganti dokternya ke dr. Andi aja, jamnya tetap\" ->\n  { \"followup\": false, \"message\": \"\", \"eventId\": \"uj9v9fv2juh5e576ajgdbi1v6g\", \"date\": \"2026-07-27\", \"time\": \"12:00\", \"doctorId\": \"dr-01\" }\n\n- \"yang jam 12 pindah ke besok jam 11\" ->\n  { \"followup\": false, \"message\": \"\", \"eventId\": \"uj9v9fv2juh5e576ajgdbi1v6g\", \"date\": \"2026-07-28\", \"time\": \"11:00\", \"doctorId\": \"dr-03\" }\n\n- \"yang jam 3 sore pindah ke jam 10\" (tidak ada booking jam 15:00 di user_schedule) ->\n  { \"followup\": true, \"message\": \"Hmm, aku nggak nemu jadwal kamu yang jam 3 sore nih. Yang ada cuma jam 11:00 sama dr. Rina Wijaya, jam 12:00 sama dr. Budi Santoso, dan jam 13:00 sama dr. Andi Pratama. Yang mana ya maksudnya?\", \"eventId\": \"\", \"date\": \"\", \"time\": \"\", \"doctorId\": \"\" }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas, prioritaskan followup: true dan tanyakan klarifikasi lewat \"message\", daripada menebak asal dan salah mengubah booking yang tidak dimaksud pasien.",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "1k6tsvsy13"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "1k6tsvsy13",
+            "type": "entity-llm",
+            "position": {
+                "x": 1815.2132836145508,
+                "y": 882.0414553707465
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "azure-openai/gpt-4o",
+                "description": "",
+                "llm_provider": "azure_openai",
+                "text_message": "{{node_output}}",
+                "entities_schema": [
+                    {
+                        "name": "followup",
+                        "example": [
+                            "true"
+                        ],
+                        "description": "Boolean indicating whether the reschedule request needs clarification before it can be executed. true if the target booking or the new date/time/doctor couldn't be confidently determined."
+                    },
+                    {
+                        "name": "message",
+                        "example": [
+                            "Kamu ada 3 jadwal hari ini: jam 11:00 sama dr. Rina Wijaya... Mau ganti yang mana?"
+                        ],
+                        "description": "A short, casual Indonesian clarification question when followup is true, listing the patient's existing bookings and asking which one to change and to what. Empty string when followup is false."
+                    },
+                    {
+                        "name": "eventId",
+                        "example": [
+                            "d797qs6uijlro4v7i6ou2c0iv0"
+                        ],
+                        "description": "The eventId of the matched existing booking to be edited. Empty string if not yet resolved (followup true)."
+                    },
+                    {
+                        "name": "date",
+                        "example": [
+                            "2026-07-27"
+                        ],
+                        "description": "The final date for the booking after the edit — either the newly requested date, or the original date if unchanged. Empty string if not yet resolved."
+                    },
+                    {
+                        "name": "time",
+                        "example": [
+                            "13:00"
+                        ],
+                        "description": "The final time for the booking after the edit — either the newly requested time, or the original time if unchanged. Empty string if not yet resolved."
+                    },
+                    {
+                        "name": "doctorId",
+                        "example": [
+                            "dr-04"
+                        ],
+                        "description": "The final doctor id for the booking after the edit — either the newly requested doctor, or the original doctor if unchanged. Empty string if not yet resolved."
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "0mlh36mw21"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "0mlh36mw21",
+            "type": "if-condition",
+            "position": {
+                "x": 1990.5426890630117,
+                "y": 883.5433560481816
+            },
+            "properties": {
+                "label": "followup?",
+                "combinator": "and",
+                "conditions": [
+                    {
+                        "id": "conditon-1",
+                        "operator": {
+                            "type": "string",
+                            "operation": "equals",
+                            "case_sensitive": false
+                        },
+                        "source_value": "{{node_output.followup.[0]}}",
+                        "compared_value": "true"
+                    }
+                ],
+                "description": ""
+            },
+            "next": {
+                "true": [
+                    {
+                        "type": "continue",
+                        "target_node": "qm0sdqqlcx"
+                    }
+                ],
+                "false": [
+                    {
+                        "type": "continue",
+                        "target_node": "ehn4kblafr"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "pbivxo41af",
+            "type": "set-user-var",
+            "position": {
+                "x": 1053.8771644863336,
+                "y": 881.2761141350778
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    },
+                    {
+                        "var_key": "first_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{first_message}}"
+                    },
+                    {
+                        "var_key": "docter_schedule",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "o0nqmkae30"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "jhlk7zteej",
+            "type": "http-request",
+            "position": {
+                "x": 865.9296254857811,
+                "y": 879.7559199429165
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/bookings/list",
+                "body": {
+                    "date": "{{node_output.date.[0]}}"
+                },
+                "label": "HTTP Request",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "pbivxo41af"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "qm0sdqqlcx",
+            "type": "response-formatter",
+            "position": {
+                "x": 1991.0426890630115,
+                "y": 798.5433560481816
+            },
+            "properties": {
+                "label": "Formatter",
+                "description": "",
+                "response_format": {
+                    "default": [
+                        {
+                            "mode": "use_ai",
+                            "type": null,
+                            "is_active": false
+                        },
+                        {
+                            "mode": "manual_setup",
+                            "text": "{{node_output.message.[0]}}",
+                            "type": "text",
+                            "text_setting": {
+                                "type": "text",
+                                "source": "previous_node"
+                            }
+                        }
+                    ]
+                }
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "y89mu9jw3x"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "y89mu9jw3x",
+            "type": "auto-integration",
+            "position": {
+                "x": 2166.681227710477,
+                "y": 799.2788293530841
+            },
+            "properties": {
+                "text": "{{node_output}}",
+                "label": "Auto Integration",
+                "operation": "send_message",
+                "description": "",
+                "save_chatlog": true,
+                "source_input": "previous_node_response_formatter_output",
+                "save_as_history_message": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "stop",
+                        "target_node": "5v27erxxym"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "ehn4kblafr",
+            "type": "http-request",
+            "position": {
+                "x": 2167.0426890630115,
+                "y": 884.0433560481816
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/bookings/reschedule",
+                "body": {
+                    "date": "{{node_output.date.[0]}}",
+                    "time": "{{node_output.time.[0]}}",
+                    "eventId": "{{node_output.eventId.[0]}}",
+                    "doctorId": "{{node_output.doctorId.[0]}}"
+                },
+                "label": "HTTP Request",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "bqyahkordg"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "edfyhzjv7b",
+            "type": "agent-assistant",
+            "position": {
+                "x": 2522.5426890630115,
+                "y": 884.0433560481816
+            },
+            "properties": {
+                "label": "Agent Assistant",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Informasikan Hasil Reschedule ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, santai, dan asyik diajak ngobrol, yang bantu pasien mengatur jadwal konsultasi dokter secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menyampaikan ke pasien HASIL dari proses reschedule booking mereka, entah itu BERHASIL atau GAGAL, dengan bahasa yang hangat, santai, dan enak dibaca seperti chat sama teman sendiri, bukan seperti membacakan laporan sistem.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"message\\\": \\\"Booking berhasil direschedule.\\\", \\\"eventId\\\": \\\"d797qs6uijlro4v7i6ou2c0iv0\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-02\\\", \\\"name\\\": \\\"dr. Siti Nurhaliza, M.Ked\\\"}, \\\"date\\\": \\\"2026-07-28\\\", \\\"time\\\": \\\"10:00\\\", \\\"meetLink\\\": \\\"https://meet.google.com/iht-unjp-vgx\\\", \\\"eventLink\\\": \\\"https://www.google.com/calendar/event?eid=...\\\"}}\",\n      \"client_message\": \"yang sama dokter rina diganti sama dokter siti besok jam 10\",\n      \"request_time\": \"2026-07-27 10:19:26\",\n      \"known_email\": \"akunexample@gmail.com\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi permintaan reschedule asli dari pasien, gunakan sebagai konteks nada bicara.\n- \"previous_output\" berisi hasil dari sistem setelah mencoba memproses reschedule:\n  - Kalau \"status_code\" 200 dan ada data booking baru (date, time, doctor, meetLink) -> BERHASIL.\n  - Kalau ada \"error\" dengan pesan yang jelas soal alasan bisnis (misalnya \"Slot sudah penuh\", \"Dokter tidak tersedia di jam tersebut\", \"Booking tidak ditemukan\") -> GAGAL karena alasan yang bisa dijelaskan wajar ke pasien, bukan bug sistem.\n  - Kalau ada \"error\" yang sifatnya teknis (format salah, 500, dsb, atau pesan yang aneh/tidak masuk akal buat pasien) -> GAGAL karena kendala teknis di sistem, bukan salah pasien.\n- \"known_email\" -> email pasien terkait booking ini.\n\nINSTRUKSI PERILAKU\n\nJIKA BERHASIL:\n1. Kasih tau dengan nada senang dan santai kalau jadwalnya udah berhasil dipindah.\n2. Sebutkan detail barunya secara mengalir dalam kalimat biasa: dokter baru (kalau ganti dokter), tanggal, dan jam baru.\n3. Sertakan link Google Meet apa adanya sebagai teks/URL biasa (jangan dibungkus format link markdown, jangan diubah).\n4. Boleh singgung sekilas kalau undangan kalender juga sudah dikirim ulang ke email pasien.\n5. Tutup dengan ajakan santai, misalnya kalau masih mau ubah lagi atau ada pertanyaan lain, tinggal bilang aja.\n\nJIKA GAGAL KARENA ALASAN BISNIS YANG WAJAR (slot penuh, dokter tidak tersedia, booking tidak ditemukan, dll):\n1. Jelaskan alasannya dengan bahasa sederhana dan santai, sesuai konteks errornya, TANPA menyalin istilah teknis apa adanya.\n2. Jangan minta maaf berlebihan, karena ini bukan kesalahan sistem, cukup sampaikan dengan nada \"oh sayang banget, coba ini deh\".\n3. Tawarkan solusi/alternatif, misalnya coba jam lain, coba dokter lain, atau cek ulang detail booking yang mau diubah.\n\nJIKA GAGAL KARENA KENDALA TEKNIS SISTEM:\n1. JANGAN pernah menampilkan pesan error mentah/istilah teknis ke pasien.\n2. Sampaikan dengan santai bahwa lagi ada kendala pas mau proses perubahan jadwalnya, minta maaf sekilas, dan ajak coba lagi sebentar lagi.\n3. Jangan menyalahkan pasien.\n\nUMUM (BERLAKU DI SEMUA KASUS)\n- Jangan menampilkan detail teknis seperti \"status_code\", \"response_body\", \"eventId\", atau isi mentah JSON ke pasien.\n- Jangan memberi saran medis, diagnosis, atau rekomendasi apapun soal kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT (WAJIB DIIKUTI KETAT)\n- Bahasa Indonesia yang santai, hangat, dan terasa seperti ngobrol beneran sama orang, bukan kalimat kaku/formal/robotik. Bikin semenarik mungkin, jangan datar.\n- HANYA boleh pakai emoji ekspresi wajah/reaksi, contoh: 😊 🙂 😄 🎉 🙏. DILARANG KERAS pakai emoji objek/simbol apapun (📅✉️📧✅❌dll).\n- JANGAN gunakan em dash (—) atau en dash (–) sama sekali di mana pun dalam kalimat. Kalau butuh jeda, gunakan koma, titik, atau kata sambung biasa, bukan tanda pisah panjang.\n- JANGAN gunakan format markdown sama sekali: tidak ada bold (**teks**), tidak ada bullet/list bertanda \"-\", tidak ada heading. Tulis sebagai paragraf/obrolan biasa yang mengalir.\n- Link (Google Meet dsb) tetap ditulis apa adanya sebagai teks URL biasa, jangan dibungkus format link markdown, jangan pakai tanda kurung siku.\n- Boleh pakai line break kalau memang bikin lebih enak dibaca, tapi jangan pakai simbol list.\n- Jaga respons tetap ringkas, ramah, dan nggak bertele-tele.\n\nCONTOH OUTPUT YANG BENAR (berhasil, ganti dokter + jadwal)\n\"Yeay, berhasil dipindah nih 🎉 Jadwal kamu yang tadinya sama dr. Rina sekarang jadi sama dr. Siti Nurhaliza, besok tanggal 28 Juli jam 10:00 ya. Link Google Meet-nya masih yang ini kok: https://meet.google.com/iht-unjp-vgx dan undangan kalendernya juga udah aku update ke email kamu. Kalau masih mau geser lagi atau ada yang mau ditanyain, bilang aja ya 😊\"\n\nCONTOH OUTPUT YANG BENAR (gagal, alasan bisnis wajar)\n\"Aduh sayangnya jam segitu udah penuh nih 🙂 Mau coba jam lain, atau aku carikan dokter lain yang masih available di jam yang sama?\"\n\nCONTOH OUTPUT YANG BENAR (gagal, kendala teknis)\n\"Waduh, lagi ada kendala nih pas aku coba pindahin jadwalnya 🙏 Boleh dicoba lagi sebentar ya?\"\n\nCONTOH OUTPUT YANG SALAH (pakai markdown, list, dan istilah teknis)\n\"Booking yang tadinya dengan **dr. Rina** sudah berhasil diganti menjadi:\n- Dokter: dr. Siti Nurhaliza, M.Ked\n- Tanggal: Selasa, 28 Juli 2026\n- Jam: 10:00\nSilakan cek inbox atau folder spam ya.\"",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "7jggwaba4p"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "bqyahkordg",
+            "type": "set-user-var",
+            "position": {
+                "x": 2356.830359134718,
+                "y": 884.1737187182952
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "known_email",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{client_email}}"
+                    },
+                    {
+                        "var_key": "first_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{first_message}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "edfyhzjv7b"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "ayurxhxp7z",
+            "type": "set-user-var",
+            "position": {
+                "x": 545.6677125499862,
+                "y": 964.7834731071727
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": true,
+                        "var_value": "{{datetime}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "54x359hat9"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "54x359hat9",
+            "type": "agent-assistant",
+            "position": {
+                "x": 730.8520084542072,
+                "y": 964.6990235135167
+            },
+            "properties": {
+                "label": "Query",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Informasikan Daftar Dokter ke Pasien)\n\nPERAN\nKamu adalah Clinic Assistant, asisten virtual klinik yang ramah, santai, dan asyik diajak ngobrol, yang bantu pasien mengatur jadwal konsultasi dokter secara online.\n\nTUJUAN TASK INI\nTugas kamu di step ini adalah menjawab pertanyaan pasien soal dokter yang tersedia di klinik, dengan menyebutkan nama-nama dokter secara natural dalam obrolan, lalu mengarahkan mereka untuk lanjut booking kalau mau.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut:\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"total\\\": 5, \\\"doctors\\\": [{\\\"id\\\": \\\"dr-01\\\", \\\"name\\\": \\\"dr. Andi Pratama, M.Ked\\\"}, {\\\"id\\\": \\\"dr-02\\\", \\\"name\\\": \\\"dr. Siti Nurhaliza, M.Ked\\\"}, {\\\"id\\\": \\\"dr-03\\\", \\\"name\\\": \\\"dr. Budi Santoso, M.Ked\\\"}, {\\\"id\\\": \\\"dr-04\\\", \\\"name\\\": \\\"dr. Rina Wijaya, M.Ked\\\"}, {\\\"id\\\": \\\"dr-05\\\", \\\"name\\\": \\\"dr. Hendra Kusuma, M.Ked\\\"}]}}\",\n      \"client_message\": \"ada dokter sapa aja?\",\n      \"request_time\": \"2026-07-27 10:40:41\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi pertanyaan pasien soal daftar dokter.\n- \"previous_output.response_body.doctors\" -> daftar semua dokter yang ada di klinik, masing-masing punya \"id\" dan \"name\".\n\nINSTRUKSI PERILAKU\n1. Sebutkan nama-nama dokter dari daftar secara natural dalam kalimat mengalir (bukan list bernomor atau bullet point) — gabung pakai koma, dan \"atau\"/\"sama\" di nama terakhir, seperti menyebutkan pilihan dalam obrolan biasa.\n2. Setelah menyebutkan nama-nama dokter, ajak pasien lanjut kalau mau booking konsultasi, dengan menanyakan mau pilih dokter yang mana dan jam berapa (dalam rentang 10:00–14:00), atau tawarkan opsi \"biar aku carikan yang available aja\" kalau pasien nggak ada preferensi.\n3. Jangan mengarang spesialisasi, gelar tambahan, atau info lain yang tidak ada di data (data cuma punya nama, jangan nambah-nambah).\n4. Jangan menanyakan hal di luar scope ini (nama pasien, email, dll) di step ini — cukup fokus jawab soal daftar dokter dan ajak lanjut booking.\n5. Jangan memberi saran medis, diagnosis, atau rekomendasi dokter berdasarkan kondisi kesehatan pasien.\n\nGAYA BAHASA & FORMAT OUTPUT (WAJIB DIIKUTI KETAT)\n- Bahasa Indonesia yang santai, hangat, dan terasa seperti ngobrol beneran sama orang, bukan kalimat kaku/formal/robotik.\n- HANYA boleh pakai emoji ekspresi wajah/reaksi, contoh: 😊 🙂 😄. DILARANG KERAS pakai emoji objek/simbol apapun.\n- JANGAN gunakan em dash (—) atau en dash (–) sama sekali. Kalau butuh jeda, pakai koma, titik, atau kata sambung biasa.\n- JANGAN gunakan format markdown sama sekali: tidak ada bold, tidak ada list bernomor atau bullet bertanda \"-\", tidak ada heading. Tulis sebagai paragraf/obrolan biasa yang mengalir, boleh pakai line break kalau memang membantu keterbacaan.\n- Jaga respons tetap ringkas dan nggak bertele-tele.\n\nCONTOH OUTPUT YANG BENAR\n\"Sekarang ada dr. Andi Pratama, dr. Siti Nurhaliza, dr. Budi Santoso, dr. Rina Wijaya, sama dr. Hendra Kusuma yang praktik di sini 😊 Mau konsultasi sama siapa nih, dan jam berapa antara jam 10 sampai jam 2 siang? Atau biar aku pilihkan yang masih available juga boleh.\"\n\nCONTOH OUTPUT YANG SALAH (pakai list bernomor dan format kaku)\n\"Sekarang dokter umum yang tersedia adalah:\n1. dr. Andi Pratama, M.Ked\n2. dr. Siti Nurhaliza, M.Ked\n3. dr. Budi Santoso, M.Ked\n4. dr. Rina Wijaya, M.Ked\n5. dr. Hendra Kusuma, M.Ked\n\nMau pilih konsultasi dengan dokter yang mana, dan jam berapa antara 10.00-14.00?\"",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "7jggwaba4p"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "vk1197bxgl",
+            "type": "http-request",
+            "position": {
+                "x": 360.5,
+                "y": 965
+            },
+            "properties": {
+                "url": "https://clinic-assistant-zeta.vercel.app/api/doctors/list",
+                "body": [],
+                "label": "HTTP Request",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json"
+                },
+                "description": "",
+                "handle_error": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "ayurxhxp7z"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "s1kk5ty4l1",
+            "type": "set-user-var",
+            "position": {
+                "x": 1055.4043232099166,
+                "y": 705.67106686293
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "previous_output",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "first_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{first_message}}"
+                    },
+                    {
+                        "var_key": "request_time",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{datetime}}"
+                    },
+                    {
+                        "var_key": "booking_schedule",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    },
+                    {
+                        "var_key": "client_message",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{user_message}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "bup0xubxtx"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "bup0xubxtx",
+            "type": "agent-assistant",
+            "position": {
+                "x": 1245.4043232099166,
+                "y": 705.3010071010916
+            },
+            "properties": {
+                "label": "Agent Assistant",
+                "model": "azure-openai/gpt-4o",
+                "tools": [],
+                "bot_id": "{{bot.id}}",
+                "description": "",
+                "input_to_ai": "{{node_output}}",
+                "json_schema": "",
+                "output_type": "text",
+                "task_for_ai": "TASK FOR AI — Clinic Assistant (Node: Resolve Target Booking(s) untuk Cancel)\n\nPERAN\nKamu adalah sistem parsing internal, bukan chatbot yang membalas user. Tugas kamu adalah membaca pesan pasien (client_message) dan daftar booking pasien yang ditemukan sistem (previous_output.response_body.bookings) untuk menentukan booking MANA SAJA yang mau dibatalkan.\n\nINPUT YANG DITERIMA\nKamu akan menerima data dalam format JSON seperti berikut (contoh disederhanakan):\n{\n  \"source_data\": {\n    \"node_output\": {\n      \"previous_output\": \"{\\\"status_code\\\": 200, \\\"response_body\\\": {\\\"total\\\": 2, \\\"bookings\\\": [\n        {\\\"eventId\\\": \\\"lvh2980tepmni47u44eio8mtik\\\", \\\"summary\\\": \\\"Konsultasi dengan dr. Rina Wijaya, M.Ked\\\", \\\"date\\\": \\\"2026-07-29\\\", \\\"time\\\": \\\"12:00\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-04\\\", \\\"name\\\": \\\"dr. Rina Wijaya, M.Ked\\\"}},\n        {\\\"eventId\\\": \\\"tdn44e42vglci3mhiq3hegg7g8\\\", \\\"summary\\\": \\\"Konsultasi dengan dr. Budi Santoso, M.Ked\\\", \\\"date\\\": \\\"2026-07-29\\\", \\\"time\\\": \\\"13:00\\\", \\\"doctor\\\": {\\\"id\\\": \\\"dr-03\\\", \\\"name\\\": \\\"dr. Budi Santoso, M.Ked\\\"}}\n      ]}}\",\n      \"client_message\": \"hapus booking hari ini\"\n    }\n  }\n}\n\nCara membaca input:\n- \"client_message\" berisi permintaan pembatalan dari pasien. Bisa merujuk ke SEMUA booking yang ditemukan (misal \"hapus dua-duanya\", \"batalin semua\"), SATU booking tertentu (lewat jam, dokter, atau posisi urutan seperti \"yang pertama\"), atau tidak spesifik sama sekali (misal \"hapus booking hari ini\" tanpa penjelasan lebih lanjut ketika ada lebih dari satu booking).\n- \"previous_output.response_body.bookings\" -> daftar booking AKTIF milik pasien yang cocok dengan pencarian (misal semua booking di tanggal tertentu). Setiap booking punya \"eventId\", \"summary\"/nama dokter, \"date\", dan \"time\".\n\nCARA MENENTUKAN eventIds\n- Kalau bookings KOSONG (0 item, tidak ada booking yang ditemukan sama sekali) -> status \"not_found\" (lihat bagian MESSAGE FOLLOWUP untuk gaya bahasanya), eventIds diisi array kosong [].\n- Kalau bookings cuma ada SATU item -> otomatis itu yang dimaksud, langsung status clear dengan eventIds berisi 1 id itu, TIDAK PERLU tanya lagi meskipun pasien tidak menyebut detail apapun.\n- Kalau bookings ada LEBIH DARI SATU item, cek pesan pasien:\n  - Kalau pasien secara eksplisit minta membatalkan SEMUA/KEDUANYA (misal \"hapus dua-duanya\", \"batalin semua\", \"cancel semuanya\") -> status clear, eventIds berisi SEMUA id dari daftar bookings.\n  - Kalau pasien menyebut petunjuk yang cocok ke SATU booking spesifik (jam tertentu, nama dokter tertentu, atau kata urutan seperti \"yang pertama\"/\"yang kedua\"/\"nomor 1\"/\"nomor 2\") -> status clear, eventIds berisi HANYA id booking yang cocok itu.\n  - Kalau pasien TIDAK memberi petunjuk apapun untuk memilih (misal cuma \"hapus booking hari ini\", \"batalin dong\" tanpa detail lebih lanjut, dan ada lebih dari 1 booking) -> status unclear (lihat bagian MESSAGE FOLLOWUP).\n\nMESSAGE FOLLOWUP (KALAU STATUS UNCLEAR ATAU NOT_FOUND)\nGaya bahasa untuk \"message\" WAJIB ikuti ini:\n- Bahasa Indonesia yang santai, hangat, dan terasa seperti ngobrol beneran sama orang, BUKAN kalimat kaku/formal/robotik.\n- Boleh pakai emoji ekspresi wajah/reaksi, contoh: 😊 🙂 😄 🙏. DILARANG KERAS pakai emoji objek/simbol apapun (📅✉️📧✅❌dll).\n- Jangan gunakan format markdown (bold, list bernomor, dll) di dalam message — tulis sebagai kalimat obrolan biasa.\n\nIsi \"message\" berdasarkan status:\n- Kalau status \"unclear\": sebutkan SEMUA booking yang ditemukan secara natural (jam & nama dokter masing-masing, dilabeli urutan seperti \"pertama\"/\"kedua\" agar bisa dijawab singkat di balasan berikutnya), lalu tanyakan apakah pasien mau membatalkan KEDUANYA/SEMUANYA, atau hanya salah satu (dan kalau salah satu, yang mana).\n- Kalau status \"not_found\": sampaikan dengan santai bahwa nggak ada booking yang ketemu sesuai yang dicari, TANPA menyalahkan pasien atau menyebut istilah teknis. Ajak pasien untuk cek ulang, kemungkinan tanggalnya beda dari yang dimaksud, atau bookingnya memang belum/sudah nggak ada. Tanyakan balik tanggal booking yang dimaksud biar bisa dicek ulang.\n- Kalau status \"clear\", \"message\" diisi string kosong \"\".\n\nOUTPUT FORMAT\nKembalikan HANYA objek JSON final (tanpa penjelasan tambahan, tanpa markdown, tanpa backtick), dengan format persis seperti ini:\n{ \"status\": \"clear\" | \"unclear\" | \"not_found\", \"message\": \"...\", \"eventIds\": [\"...\", \"...\"] }\n\nKalau status \"unclear\" dan belum ada satupun booking yang bisa dipastikan, \"eventIds\" diisi array kosong [].\nKalau status \"not_found\", \"eventIds\" juga diisi array kosong [].\n\nCONTOH\n\nprevious_output.bookings: 2 item, tanggal 2026-07-29 — jam 12:00 dr. Rina Wijaya (eventId lvh2980tepmni47u44eio8mtik), jam 13:00 dr. Budi Santoso (eventId tdn44e42vglci3mhiq3hegg7g8)\n\n- \"hapus booking hari ini\" (tidak ada petunjuk memilih, ada 2 booking) ->\n  { \"status\": \"unclear\", \"message\": \"Saat ini untuk hari ini ada 2 booking nih 😊 Pertama, jam 12:00 sama dr. Rina Wijaya. Kedua, jam 13:00 sama dr. Budi Santoso. Mau dibatalin dua-duanya, atau salah satu aja? Kalau salah satu, yang mana?\", \"eventIds\": [] }\n\n- \"hapus dua-duanya aja\" ->\n  { \"status\": \"clear\", \"message\": \"\", \"eventIds\": [\"lvh2980tepmni47u44eio8mtik\", \"tdn44e42vglci3mhiq3hegg7g8\"] }\n\n- \"batalin yang jam 12 aja\" ->\n  { \"status\": \"clear\", \"message\": \"\", \"eventIds\": [\"lvh2980tepmni47u44eio8mtik\"] }\n\n- \"yang sama dr. Budi aja yang dibatalin\" ->\n  { \"status\": \"clear\", \"message\": \"\", \"eventIds\": [\"tdn44e42vglci3mhiq3hegg7g8\"] }\n\n- \"yang pertama aja\" (menjawab urutan dari pertanyaan followup sebelumnya) ->\n  { \"status\": \"clear\", \"message\": \"\", \"eventIds\": [\"lvh2980tepmni47u44eio8mtik\"] }\n\nprevious_output.bookings: 1 item saja\n- \"hapus booking hari ini\" (langsung jelas karena cuma ada 1) ->\n  { \"status\": \"clear\", \"message\": \"\", \"eventIds\": [\"<eventId booking tersebut>\"] }\n\nprevious_output.bookings: 0 item (kosong, nggak ada booking yang ketemu)\n- \"hapus booking besok\" ->\n  { \"status\": \"not_found\", \"message\": \"Hmm, aku coba cek tapi kok nggak nemu booking di tanggal itu ya 🙂 Mungkin tanggalnya beda dari yang dimaksud, atau bookingnya udah nggak ada. Boleh kasih tau lagi tanggal booking yang mau dibatalin?\", \"eventIds\": [] }\n\nKalau ada bagian yang tetap ambigu setelah aturan di atas, prioritaskan status \"unclear\" dan tanyakan klarifikasi lewat \"message\" yang menyebutkan daftar booking yang ada, daripada menebak asal dan membatalkan booking yang tidak dimaksud pasien.",
+                "tool_choice": "none",
+                "embed_memory": true,
+                "llm_provider": "azure_openai",
+                "advanced_settings": false,
+                "validation_errors": [],
+                "input_to_ai_setting": {
+                    "type": "variable",
+                    "source": "previous_node"
+                },
+                "validation_warnings": [],
+                "embed_knowledge_base": true,
+                "enable_json_structured_output": false,
+                "process_tool_execution_result": false
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "xtixjx3wzx"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "xtixjx3wzx",
+            "type": "entity-llm",
+            "position": {
+                "x": 1436.1642441460992,
+                "y": 707.2315225888132
+            },
+            "properties": {
+                "label": "Entity LLM",
+                "model": "azure-openai/gpt-4o",
+                "description": "",
+                "llm_provider": "azure_openai",
+                "text_message": "{{node_output}}",
+                "entities_schema": [
+                    {
+                        "name": "status",
+                        "example": [
+                            "unclear",
+                            "clear"
+                        ],
+                        "description": ""
+                    },
+                    {
+                        "name": "message",
+                        "example": [
+                            "Saat ini untuk hari ini ada 2 booking. Pertama, jam 12:00 sama dr. Rina Wijaya..."
+                        ],
+                        "description": ""
+                    },
+                    {
+                        "name": "eventIds",
+                        "example": [
+                            "[\"lvh2980tepmni47u44eio8mtik\"]",
+                            "[\"12345abc\", \"67890def\", \"11223ghi\"]"
+                        ],
+                        "description": ""
+                    }
+                ],
+                "validation_errors": [],
+                "validation_warnings": []
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "4qy36yyv0y"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "a9lgj56ya6",
+            "type": "response-formatter",
+            "position": {
+                "x": 1600.2051541078818,
+                "y": 795.3283468968345
+            },
+            "properties": {
+                "label": "Followup",
+                "description": "",
+                "response_format": {
+                    "default": [
+                        {
+                            "mode": "use_ai",
+                            "type": null,
+                            "is_active": false
+                        },
+                        {
+                            "mode": "manual_setup",
+                            "text": "{{node_output.message.[0]}}",
+                            "type": "text",
+                            "text_setting": {
+                                "type": "text",
+                                "source": "previous_node"
+                            }
+                        }
+                    ]
+                }
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "gcf3r074ek"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "gcf3r074ek",
+            "type": "auto-integration",
+            "position": {
+                "x": 1790.7051541078818,
+                "y": 795.8283468968345
+            },
+            "properties": {
+                "text": "{{node_output}}",
+                "label": "Auto Integration",
+                "operation": "send_message",
+                "description": "",
+                "save_chatlog": true,
+                "source_input": "previous_node_response_formatter_output",
+                "save_as_history_message": true
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "stop",
+                        "target_node": "s1kk5ty4l1"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "4qy36yyv0y",
+            "type": "if-condition",
+            "position": {
+                "x": 1436.3075495246646,
+                "y": 791.9488640222114
+            },
+            "properties": {
+                "label": "clear?",
+                "combinator": "or",
+                "conditions": [
+                    {
+                        "id": "conditon-1",
+                        "operator": {
+                            "type": "string",
+                            "operation": "equals",
+                            "case_sensitive": false
+                        },
+                        "source_value": "{{node_output.status.[0]}}",
+                        "compared_value": "clear"
+                    },
+                    {
+                        "operator": {
+                            "type": "string",
+                            "operation": "equals",
+                            "case_sensitive": false
+                        },
+                        "source_value": "{{node_output.status.[0]}}",
+                        "compared_value": "not_found"
+                    }
+                ],
+                "description": ""
+            },
+            "next": {
+                "true": [
+                    {
+                        "type": "continue",
+                        "target_node": "o5imyxkalb"
+                    }
+                ],
+                "false": [
+                    {
+                        "type": "continue",
+                        "target_node": "a9lgj56ya6"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "1lhtpp8aui",
+            "type": "set-user-var",
+            "position": {
+                "x": 1245.725867244932,
+                "y": 535.7332831332884
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "availability_data",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "sqmlkfmbfb"
+                    }
+                ]
+            }
+        }
+    ]
+}
 ```
 
 4. Buka notepad, *paste* kode tersebut, lalu *search* (cari) tulisan `domain-backend-aku.vercel.app`. Ganti tulisan tersebut dengan domain backend Vercel kamu (yang didapatkan dari langkah deploy sebelumnya).
