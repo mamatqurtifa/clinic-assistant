@@ -2156,7 +2156,7 @@ OAUTH_LOGIN_PORT=4000
                 "main": [
                     {
                         "type": "continue",
-                        "target_node": "s1kk5ty4l1"
+                        "target_node": "81j0g8wq0a"
                     }
                 ]
             }
@@ -2165,7 +2165,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "o5imyxkalb",
             "type": "http-request",
             "position": {
-                "x": 1600.1421196242063,
+                "x": 1790.1421196242063,
                 "y": 705.6891987344342
             },
             "properties": {
@@ -2206,7 +2206,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "bqts5g4hp4",
             "type": "agent-assistant",
             "position": {
-                "x": 1980.1421196242063,
+                "x": 2170.1421196242063,
                 "y": 705.6891987344342
             },
             "properties": {
@@ -2246,7 +2246,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "p52kkuqhsg",
             "type": "set-user-var",
             "position": {
-                "x": 1790.2089149116325,
+                "x": 1980.2089149116325,
                 "y": 705.884008100065
             },
             "properties": {
@@ -2395,7 +2395,7 @@ OAUTH_LOGIN_PORT=4000
                 "body": {
                     "date": "{{node_output.date.[0]}}",
                     "time": "{{node_output.time.[0]}}",
-                    "email": ""
+                    "email": "{{node_output.known_email}}"
                 },
                 "label": "HTTP Request",
                 "method": "POST",
@@ -2409,7 +2409,7 @@ OAUTH_LOGIN_PORT=4000
                 "main": [
                     {
                         "type": "continue",
-                        "target_node": "5v27erxxym"
+                        "target_node": "q36bjtxzox"
                     }
                 ]
             }
@@ -2576,7 +2576,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "5v27erxxym",
             "type": "set-user-var",
             "position": {
-                "x": 1434.8565889931165,
+                "x": 1599.8565889931165,
                 "y": 880.1737187182952
             },
             "properties": {
@@ -2616,7 +2616,7 @@ OAUTH_LOGIN_PORT=4000
                         "var_key": "user_schedule",
                         "data_type": "string",
                         "persist": false,
-                        "var_value": "{{node_output}}"
+                        "var_value": "{{user_schedule}}"
                     },
                     {
                         "var_key": "docter_schedule",
@@ -2641,7 +2641,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "qzrfv00caw",
             "type": "agent-assistant",
             "position": {
-                "x": 1625.3565889931165,
+                "x": 1790.3565889931165,
                 "y": 881.1737187182952
             },
             "properties": {
@@ -2681,7 +2681,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "1k6tsvsy13",
             "type": "entity-llm",
             "position": {
-                "x": 1815.2132836145508,
+                "x": 1980.2132836145508,
                 "y": 882.0414553707465
             },
             "properties": {
@@ -2750,7 +2750,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "0mlh36mw21",
             "type": "if-condition",
             "position": {
-                "x": 1990.5426890630117,
+                "x": 2155.5426890630115,
                 "y": 883.5433560481816
             },
             "properties": {
@@ -2940,7 +2940,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "ehn4kblafr",
             "type": "http-request",
             "position": {
-                "x": 2167.0426890630115,
+                "x": 2332.0426890630115,
                 "y": 884.0433560481816
             },
             "properties": {
@@ -2972,7 +2972,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "edfyhzjv7b",
             "type": "agent-assistant",
             "position": {
-                "x": 2522.5426890630115,
+                "x": 2687.5426890630115,
                 "y": 884.0433560481816
             },
             "properties": {
@@ -3012,7 +3012,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "bqyahkordg",
             "type": "set-user-var",
             "position": {
-                "x": 2356.830359134718,
+                "x": 2521.830359134718,
                 "y": 884.1737187182952
             },
             "properties": {
@@ -3173,7 +3173,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "s1kk5ty4l1",
             "type": "set-user-var",
             "position": {
-                "x": 1055.4043232099166,
+                "x": 1245.4043232099166,
                 "y": 705.67106686293
             },
             "properties": {
@@ -3201,7 +3201,7 @@ OAUTH_LOGIN_PORT=4000
                         "var_key": "booking_schedule",
                         "data_type": "string",
                         "persist": false,
-                        "var_value": "{{node_output}}"
+                        "var_value": "{{docter_schedule}}"
                     },
                     {
                         "var_key": "client_message",
@@ -3226,7 +3226,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "bup0xubxtx",
             "type": "agent-assistant",
             "position": {
-                "x": 1245.4043232099166,
+                "x": 1435.4043232099166,
                 "y": 705.3010071010916
             },
             "properties": {
@@ -3266,7 +3266,7 @@ OAUTH_LOGIN_PORT=4000
             "id": "xtixjx3wzx",
             "type": "entity-llm",
             "position": {
-                "x": 1436.1642441460992,
+                "x": 1626.1642441460992,
                 "y": 707.2315225888132
             },
             "properties": {
@@ -3448,6 +3448,64 @@ OAUTH_LOGIN_PORT=4000
                     {
                         "type": "continue",
                         "target_node": "sqmlkfmbfb"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "q36bjtxzox",
+            "type": "set-user-var",
+            "position": {
+                "x": 1435.3565342317777,
+                "y": 881.1737120846595
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "variables": [
+                    {
+                        "var_key": "user_schedule",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    }
+                ],
+                "decription": "",
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "5v27erxxym"
+                    }
+                ]
+            }
+        },
+        {
+            "id": "81j0g8wq0a",
+            "type": "set-user-var",
+            "position": {
+                "x": 1055.9043489998671,
+                "y": 705.5970076580629
+            },
+            "properties": {
+                "label": "Set User Variable",
+                "decription": "",
+                "variables": [
+                    {
+                        "var_key": "docter_schedule",
+                        "data_type": "string",
+                        "persist": false,
+                        "var_value": "{{node_output}}"
+                    }
+                ],
+                "description": ""
+            },
+            "next": {
+                "main": [
+                    {
+                        "type": "continue",
+                        "target_node": "s1kk5ty4l1"
                     }
                 ]
             }
