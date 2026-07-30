@@ -174,10 +174,13 @@ async function rescheduleBooking(eventId, { date, hour, doctor }) {
   if (doctor) {
     patch.summary = `Konsultasi dengan ${doctor.name}`;
     patch.description = `Konsultasi online dengan ${doctor.name} melalui Google Meet.`;
+    
+    // Pertahankan email pasien, tapi ganti email dokter lama dengan dokter baru
     if (event.data.attendees) {
       const patientEmails = event.data.attendees
         .map(a => a.email)
         .filter(e => !doctors.some(d => d.email === e));
+        
       patch.attendees = [
         ...patientEmails.map(email => ({ email })),
         ...(doctor.email ? [{ email: doctor.email }] : [])
@@ -233,6 +236,7 @@ const app = express();
 app.use(express.json());
 app.get('/', (req, res) => res.json({ status: 'ok', service: 'Clinic Calendar Proxy' }));
 
+// Helper sanitize input
 const sanitizeInput = (val) => {
   if (typeof val === 'string') {
     const trimmed = val.trim();
@@ -242,6 +246,7 @@ const sanitizeInput = (val) => {
   return val;
 };
 
+// Route: Availability
 const handleAvailability = async (req, res) => {
   try {
     const { date, time } = req.body;
@@ -257,21 +262,23 @@ const handleAvailability = async (req, res) => {
     });
   } catch (err) {
     console.error('Availability Error:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan.' });
+    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
   }
 };
 app.post('/api/availability', handleAvailability);
 app.get('/api/availability', (req, res) => { req.body = req.query; handleAvailability(req, res); });
 
+// Route: Doctors
 const handleDoctors = (req, res) => {
   try { return res.json({ total: doctors.length, doctors }); } catch (err) {
     console.error('Doctors Error:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan.' });
+    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
   }
 };
 app.get('/api/doctors/list', handleDoctors);
 app.post('/api/doctors/list', handleDoctors);
 
+// Route: Bookings
 app.post('/api/bookings', async (req, res) => {
   try {
     const { date, time, email, doctorId } = req.body;
@@ -283,12 +290,14 @@ app.post('/api/bookings', async (req, res) => {
     const doctor = doctors.find((d) => d.id === doctorId);
     if (!doctor) return res.status(404).json({ error: 'Dokter tidak ditemukan.' });
     const isAvail = await isDoctorAvailable(date, hour, doctorId);
-    if (!isAvail) return res.status(409).json({ error: `${doctor.name} sudah penuh.`, doctorId, isFull: true });
+    if (!isAvail) return res.status(409).json({ error: `${doctor.name} sudah penuh di jam tersebut. Silakan pilih jam atau dokter lain.`, doctorId, isFull: true });
     const event = await createBookingEvent({ doctor, date, hour, patientEmail: email });
-    return res.status(201).json({ message: 'Booking berhasil dibuat.', eventId: event.id, doctor, date, time: `${String(hour).padStart(2, '0')}:00`, meetLink: event.hangoutLink, eventLink: event.htmlLink });
+    return res.status(201).json({
+      message: 'Booking berhasil dibuat.', eventId: event.id, doctor, date, time: `${String(hour).padStart(2, '0')}:00`, meetLink: event.hangoutLink, eventLink: event.htmlLink
+    });
   } catch (err) {
     console.error('Create Booking Error:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan.' });
+    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
   }
 });
 
@@ -314,8 +323,12 @@ app.post('/api/bookings/reschedule', async (req, res) => {
       if (!isAvail) return res.status(409).json({ error: 'Dokter sudah penuh.', doctorId, isFull: true });
     }
     const event = await rescheduleBooking(eventId, { date, hour, doctor: targetDoctor });
+    const eventDate = event.start.dateTime.slice(0, 10);
+    const eventHour = parseInt(event.start.dateTime.slice(11, 13), 10);
     const docName = doctors.find((d) => event.summary.includes(d.name));
-    return res.json({ message: 'Booking berhasil direschedule.', eventId: event.id, doctor: docName, date: event.start.dateTime.slice(0, 10), time: `${String(parseInt(event.start.dateTime.slice(11, 13), 10)).padStart(2, '0')}:00`, meetLink: event.hangoutLink, eventLink: event.htmlLink });
+    return res.json({
+      message: 'Booking berhasil direschedule.', eventId: event.id, doctor: docName, date: eventDate, time: `${String(eventHour).padStart(2, '0')}:00`, meetLink: event.hangoutLink, eventLink: event.htmlLink
+    });
   } catch (err) {
     console.error('Reschedule Error:', err);
     return res.status(500).json({ error: 'Gagal reschedule.' });
@@ -339,11 +352,33 @@ app.post('/api/bookings/list', async (req, res) => {
         return res.status(200).json({ message: 'Jam praktik hanya tersedia antara 10.00 - 14.00.', total: 0, filters: { date: cleanDate, time: cleanTime, doctorId: cleanDoctorId, email: cleanEmail }, bookings: [] });
       }
     }
+    
     const bookings = await getBookings({ date: cleanDate, hour, doctorId: cleanDoctorId, email: cleanEmail });
-    return res.json({ total: bookings.length, filters: { date: cleanDate, time: hour !== null ? `${String(hour).padStart(2, '0')}:00` : null, doctorId: cleanDoctorId, email: cleanEmail }, bookings });
+    
+    let allBookingsForDate = bookings;
+    if (cleanEmail || cleanDoctorId) {
+      // Fetch ulang tanpa filter email & doctorId untuk mendapatkan status dokter yang sebenarnya
+      allBookingsForDate = await getBookings({ date: cleanDate, hour });
+    }
+
+    const doctorStatus = doctors.map(doc => {
+      const isBooked = allBookingsForDate.some(b => b.doctor && b.doctor.id === doc.id);
+      return {
+        id: doc.id,
+        name: doc.name,
+        status: isBooked ? 'booked' : 'free'
+      };
+    });
+
+    return res.json({
+      total: bookings.length, 
+      filters: { date: cleanDate, time: hour !== null ? `${String(hour).padStart(2, '0')}:00` : null, doctorId: cleanDoctorId, email: cleanEmail }, 
+      doctorStatus,
+      bookings
+    });
   } catch (err) {
     console.error('List Bookings Error:', err);
-    return res.status(500).json({ error: 'Terjadi kesalahan.' });
+    return res.status(500).json({ error: 'Terjadi kesalahan pada server.' });
   }
 });
 
@@ -383,103 +418,12 @@ app.post('/api/bookings/cancel', async (req, res) => {
 });
 
 app.use((req, res) => res.status(404).json({ error: 'Endpoint tidak ditemukan.' }));
-app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Terjadi kesalahan.' }); });
+app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Terjadi kesalahan yang tidak terduga.' }); });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`API berjalan di http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`[Proxy Server] API berjalan di http://localhost:${PORT}`));
 
 module.exports = app;
-```
-
----
-
-### 2. Buat Project di Google Cloud Console
-
-Untuk menggunakan Google Calendar secara gratis, kita perlu membuat kunci API dari Google:
-
-1. Buka [Google Cloud Console](https://console.cloud.google.com/).
-2. Buat Project baru (misal: `Clinic Assistant`).
-   ![Buat Project](/public/images/create_project.png)
-3. Buka menu **APIs & Services** > **Library**.
-   ![APIs & Services](/public/images/apis_and_services.png)
-4. Cari **Google Calendar API** lalu klik **Enable**.
-   ![Enable Google Calendar API](/public/images/enable_calendar_api.png)
----
-
-### 3. Konfigurasi OAuth Consent Screen
-
-Ini adalah halaman persetujuan Google yang akan muncul saat Anda memberikan akses:
-
-1. Ke menu **APIs & Services** > **OAuth consent screen**.
-   ![OAuth Consent Screen](/public/images/oauth_consent_screen.png) 
-2. Pilih **External** > klik **Create**.
-3. Isi informasi wajib:
-   - **App name**: (bebas, misal: Clinic Assistant)
-   - **User support email**: (email Anda)
-   - **Developer contact info**: (email Anda)
-   ![App name](/public/images/app_name.png)
-
-4. Klik **Save and Continue** sampai selesai (tidak perlu isi scope spesifik).
-5. Pada halaman Audience / Ringkasan, klik **Publish App** (agar statusnya menjadi *In production* dan tidak *expired*).
-   ![Publish App](/public/images/publish_app.png)
-
----
-
-### 4. Buat OAuth Client ID
-
-Ini adalah langkah untuk mendapatkan `Client ID` dan `Client Secret` milik Anda:
-
-1. Ke menu **APIs & Services** > **Credentials**.
-   ![Credentials](/public/images/credentials.png)
-2. Klik **Create Credentials** > **OAuth client ID**.
-   ![Create Credentials](/public/images/create_credentials.png)
-3. Pilih **Application type**: **Web application**.
-4. Beri nama (misal: `Proxy`).
-5. Pada bagian **Authorized redirect URIs**, klik **Add URI**.
-6. Masukkan URL dari **Google OAuth 2.0 Playground**:
-   ```
-   https://developers.google.com/oauthplayground
-   ```
-   ![Authorized redirect URIs](/public/images/authorized_redirect_uris.png)
-7. Klik **Create**. Anda akan mendapatkan **Client ID** dan **Client secret**. Catat dan simpan keduanya!
-   ![Client ID and Client Secret](/public/images/client_id_and_client_secret.png)
----
-
-### 5. Dapatkan Refresh Token via Google OAuth Playground
-
-Kita akan menggunakan Google OAuth Playground untuk mengizinkan aplikasi membaca kalender klinik kita dan mendapatkan `refresh_token`.
-
-1. Buka [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/).
-   ![OAuth 2.0 Playground](/public/images/oauth_2_0_playground.png)
-2. Klik ikon gir (Settings) di pojok kanan atas.
-   ![Settings](/public/images/oauth_settings.png)
-3. Centang **"Use your own OAuth credentials"**.
-4. Masukkan **Client ID** dan **Client Secret** yang didapatkan dari langkah 4.
-5. Tutup menu settings.
-6. Pada bagian **Step 1**, cari dan pilih API: `Google Calendar API v3` -> `https://www.googleapis.com/auth/calendar`.
-   ![Google Calendar API v3](/public/images/step_1_calendar_api.png)
-7. Klik **Authorize APIs**. (Login menggunakan akun Google klinik/dokter yang kalendernya ingin digunakan).
-   ![Authorize APIs](/public/images/step_2_authorize_apis.png)
-8. Setelah di-redirect kembali ke Playground, pada **Step 2**, klik **Exchange authorization code for tokens**.
-   ![Exchange authorization code for tokens](/public/images/step_3_exchange_authorization_code_for_tokens.png)
-9. Anda akan mendapatkan **Refresh token**. Simpan tulisan ini!
-   ![Refresh token](/public/images/step_4_exchange_authorization_code_for_tokens.png)
----
-
-### 6. Siapkan Vercel & Deploy
-
-3 file kita di Github tadi sekarang sudah bisa kita online-kan di Vercel:
-
-1. Buka [vercel.com](https://vercel.com) dan **login** menggunakan GitHub Anda.
-   ![Vercel](/public/images/vercel.png)
-2. Dari dashboard Vercel, klik **Add New Project**.
-   ![Add New Project](/public/images/add_new_project.png)
-3. Cari repository GitHub `clinic-assistant-backend` yang dibuat pada Langkah 1, lalu klik **Import**.
-   ![Import Repository](/public/images/import_repository.png)
-4. Buka notepad dan *copy-paste* teks di bawah ini. Kamu **hanya perlu mengisi 3 baris yang masih kosong** dengan data yang sudah kamu dapatkan sebelumnya. Sisa baris lainnya biarkan saja apa adanya:
-   - `GOOGLE_CLIENT_ID` = (Isi dengan Client ID dari Langkah 4)
-   - `GOOGLE_CLIENT_SECRET` = (Isi dengan Client Secret dari Langkah 4)
-   - `GOOGLE_REFRESH_TOKEN` = (Isi dengan Refresh Token dari Langkah 5)
 
 ```text
 GOOGLE_CLIENT_ID=

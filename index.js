@@ -273,9 +273,29 @@ app.post('/api/bookings/list', async (req, res) => {
         return res.status(200).json({ message: 'Jam praktik hanya tersedia antara 10.00 - 14.00.', total: 0, filters: { date: cleanDate, time: cleanTime, doctorId: cleanDoctorId, email: cleanEmail }, bookings: [] });
       }
     }
+    
     const bookings = await getBookings({ date: cleanDate, hour, doctorId: cleanDoctorId, email: cleanEmail });
+    
+    let allBookingsForDate = bookings;
+    if (cleanEmail || cleanDoctorId) {
+      // Fetch ulang tanpa filter email & doctorId untuk mendapatkan status dokter yang sebenarnya
+      allBookingsForDate = await getBookings({ date: cleanDate, hour });
+    }
+
+    const doctorStatus = doctors.map(doc => {
+      const isBooked = allBookingsForDate.some(b => b.doctor && b.doctor.id === doc.id);
+      return {
+        id: doc.id,
+        name: doc.name,
+        status: isBooked ? 'booked' : 'free'
+      };
+    });
+
     return res.json({
-      total: bookings.length, filters: { date: cleanDate, time: hour !== null ? `${String(hour).padStart(2, '0')}:00` : null, doctorId: cleanDoctorId, email: cleanEmail }, bookings
+      total: bookings.length, 
+      filters: { date: cleanDate, time: hour !== null ? `${String(hour).padStart(2, '0')}:00` : null, doctorId: cleanDoctorId, email: cleanEmail }, 
+      doctorStatus,
+      bookings
     });
   } catch (err) {
     console.error('List Bookings Error:', err);

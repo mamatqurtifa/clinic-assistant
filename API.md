@@ -140,6 +140,18 @@ Jika variable kosong (seperti `""`, `"null"`, atau unresolved `{{...}}`), sistem
 {
   "total": 1,
   "filters": { "date": "2026-07-24", "time": null, "doctorId": null, "email": "pasien@example.com" },
+  "doctorStatus": [
+    {
+      "id": "dr-01",
+      "name": "dr. Andi Pratama, M.Ked",
+      "status": "booked"
+    },
+    {
+      "id": "dr-02",
+      "name": "dr. Siti Nurhaliza, M.Ked",
+      "status": "free"
+    }
+  ],
   "bookings": [
     {
       "eventId": "abc123",
