@@ -3,14 +3,14 @@ const express = require("express");
 const { google } = require("googleapis");
 const doctors = require("./doctors.json");
 
-// ─── PORT & BASE URL (defined early — needed for OAUTH_REDIRECT_URI) ──────────
+// PORT & BASE URL (defined early - needed for OAUTH_REDIRECT_URI)
 const PORT = process.env.PORT || 3000;
 const APP_BASE_URL = (
   process.env.APP_BASE_URL || `http://localhost:${PORT}`
 ).replace(/\/$/, "");
 const OAUTH_REDIRECT_URI = `${APP_BASE_URL}/auth/callback`;
 
-// ─── CLINIC CONFIG & TIME UTILS ───────────────────────────────────────────────
+// CLINIC CONFIG & TIME UTILS
 const CLINIC_OPEN_HOUR = 10;
 const CLINIC_CLOSE_HOUR = 14;
 const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || "primary";
@@ -42,9 +42,9 @@ function toRFC3339(date, hour) {
   return `${date}T${pad2(hour)}:00:00${TZ_OFFSET}`;
 }
 
-// ─── GOOGLE AUTH SERVICE ──────────────────────────────────────────────────────
+// GOOGLE AUTH SERVICE
 
-/** Creates a base OAuth2 client (no credentials set yet). */
+// Creates a base OAuth2 client (no credentials set yet).
 function getOAuth2ClientBase() {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } = process.env;
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -59,14 +59,14 @@ function getOAuth2ClientBase() {
   );
 }
 
-/** Creates an OAuth2 client pre-loaded with a user's refresh token. */
+// Creates an OAuth2 client pre-loaded with a user's refresh token.
 function getOAuth2ClientWithToken(refreshToken) {
   const client = getOAuth2ClientBase();
   client.setCredentials({ refresh_token: refreshToken });
   return client;
 }
 
-/** Generates the Google OAuth login URL. */
+// Generates the Google OAuth login URL.
 function generateAuthUrl() {
   return getOAuth2ClientBase().generateAuthUrl({
     access_type: "offline",
@@ -75,11 +75,9 @@ function generateAuthUrl() {
   });
 }
 
-/**
- * Extracts refresh_token from (in priority order):
- *   1. req.body.refresh_token
- *   2. Authorization: Bearer <token> header
- */
+// Extracts refresh_token from (in priority order):
+//   1. req.body.refresh_token
+//   2. Authorization: Bearer <token> header
 function extractRefreshToken(req) {
   if (req.body && req.body.refresh_token)
     return String(req.body.refresh_token).trim();
@@ -89,11 +87,9 @@ function extractRefreshToken(req) {
   return null;
 }
 
-/**
- * Auth middleware — all protected /api/* routes pass through this.
- * Returns 401 + login_url when token is missing or invalid.
- * Attaches req.oauth2Client when token is valid.
- */
+// Auth middleware - all protected /api/* routes pass through this.
+// Returns 401 + login_url when token is missing or invalid.
+// Attaches req.oauth2Client when token is valid.
 async function requireAuth(req, res, next) {
   const refreshToken = extractRefreshToken(req);
   if (!refreshToken) {
@@ -113,8 +109,7 @@ async function requireAuth(req, res, next) {
   }
 }
 
-// ─── CALENDAR SERVICE ─────────────────────────────────────────────────────────
-// All functions now accept oauth2Client as their first argument.
+// CALENDAR SERVICE
 
 function getCalendarClient(oauth2Client) {
   return google.calendar({ version: "v3", auth: oauth2Client });
@@ -291,19 +286,16 @@ async function cancelBooking(oauth2Client, eventId) {
   });
 }
 
-// ─── EXPRESS APP ──────────────────────────────────────────────────────────────
+// EXPRESS APP
 const app = express();
 app.use(express.json());
 app.get("/", (req, res) =>
   res.json({ status: "ok", service: "Clinic Calendar Proxy" }),
 );
 
-// ─── AUTH ROUTES (no auth middleware — these are the login flow) ──────────────
+// AUTH ROUTES (no auth middleware - these are the login flow)
 
-/**
- * GET /auth/login
- * Redirects the user's browser to the Google OAuth consent screen.
- */
+// GET /auth/login
 app.get("/auth/login", (req, res) => {
   try {
     res.redirect(generateAuthUrl());
@@ -312,25 +304,21 @@ app.get("/auth/login", (req, res) => {
   }
 });
 
-/**
- * GET /auth/callback
- * Google redirects here after the user grants consent.
- * Exchanges the authorization code for tokens and redirects to /auth/token.
- */
+// GET /auth/callback
 app.get("/auth/callback", async (req, res) => {
   const { code, error } = req.query;
 
   if (error) {
     return res.status(400).send(`
       <!DOCTYPE html><html lang="id"><body style="font-family:sans-serif;padding:40px">
-        <h2>❌ Login dibatalkan</h2><p>${error}</p>
+        <h2>Login dibatalkan</h2><p>${error}</p>
         <a href="/auth/login">Coba lagi</a>
       </body></html>`);
   }
   if (!code) {
     return res.status(400).send(`
       <!DOCTYPE html><html lang="id"><body style="font-family:sans-serif;padding:40px">
-        <h2>❌ Authorization code tidak ditemukan.</h2>
+        <h2>Authorization code tidak ditemukan.</h2>
         <a href="/auth/login">Coba lagi</a>
       </body></html>`);
   }
@@ -342,7 +330,7 @@ app.get("/auth/callback", async (req, res) => {
     if (!tokens.refresh_token) {
       return res.status(400).send(`
         <!DOCTYPE html><html lang="id"><body style="font-family:sans-serif;padding:40px">
-          <h2>⚠️ Refresh token tidak diterima</h2>
+          <h2>Refresh token tidak diterima</h2>
           <p>Kamu mungkin sudah pernah authorize sebelumnya. Cabut akses lama di
           <a href="https://myaccount.google.com/permissions" target="_blank">Google Account Permissions</a>
           kemudian <a href="/auth/login">coba lagi</a>.</p>
@@ -356,22 +344,19 @@ app.get("/auth/callback", async (req, res) => {
     console.error("OAuth callback error:", err);
     res.status(500).send(`
       <!DOCTYPE html><html lang="id"><body style="font-family:sans-serif;padding:40px">
-        <h2>❌ Gagal mendapatkan token</h2><p>${err.message}</p>
+        <h2>Gagal mendapatkan token</h2><p>${err.message}</p>
         <a href="/auth/login">Coba lagi</a>
       </body></html>`);
   }
 });
 
-/**
- * GET /auth/token
- * Displays the refresh token on a styled page so the user can copy it.
- * The token is passed as ?token= query param (from /auth/callback redirect).
- */
+// GET /auth/token
 app.get("/auth/token", (req, res) => {
   const { token } = req.query;
   if (!token) return res.redirect("/auth/login");
 
-  const masked = token.slice(0, 5) + '\u25cf'.repeat(Math.max(0, token.length - 5));
+  const masked =
+    token.slice(0, 5) + "\u25cf".repeat(Math.max(0, token.length - 5));
 
   res.send(`<!DOCTYPE html>
 <html lang="id">
@@ -421,16 +406,9 @@ app.get("/auth/token", (req, res) => {
 </html>`);
 });
 
+// API AUTH ENDPOINTS (no requireAuth - these verify the token themselves)
 
-// ─── API AUTH ENDPOINTS (no requireAuth — these verify the token themselves) ──
-
-/**
- * POST /api/auth/check
- * GET  /api/auth/check
- * Body / Header / Query: refresh_token
- *
- * Returns { login_status: "pass"|"failed", login_url: "" | "<url>" }
- */
+// GET  /api/auth/check
 const handleAuthCheck = async (req, res) => {
   const refreshToken = extractRefreshToken(req);
   if (!refreshToken) {
@@ -447,13 +425,7 @@ const handleAuthCheck = async (req, res) => {
 app.post("/api/auth/check", handleAuthCheck);
 app.get("/api/auth/check", handleAuthCheck);
 
-/**
- * POST /api/auth/email
- * GET  /api/auth/email
- * Body / Header / Query: refresh_token
- *
- * Returns { email: "user@gmail.com", name: "User Name" }
- */
+// GET /api/auth/email
 const handleAuthEmail = async (req, res) => {
   const refreshToken = extractRefreshToken(req);
   if (!refreshToken) {
@@ -475,7 +447,7 @@ const handleAuthEmail = async (req, res) => {
 app.post("/api/auth/email", handleAuthEmail);
 app.get("/api/auth/email", handleAuthEmail);
 
-// ─── HELPER ───────────────────────────────────────────────────────────────────
+// HELPER
 const sanitizeInput = (val) => {
   if (typeof val === "string") {
     const trimmed = val.trim();
@@ -491,7 +463,7 @@ const sanitizeInput = (val) => {
   return val;
 };
 
-// ─── PROTECTED API ROUTES (all require valid refresh_token via requireAuth) ───
+// PROTECTED API ROUTES (all require valid refresh_token via requireAuth)
 
 // Route: Availability
 const handleAvailability = async (req, res) => {
@@ -507,11 +479,9 @@ const handleAvailability = async (req, res) => {
         .json({ error: "Format date harus YYYY-MM-DD, contoh: 2026-07-24." });
     const hour = parseHour(time);
     if (hour === null || hour < CLINIC_OPEN_HOUR || hour >= CLINIC_CLOSE_HOUR) {
-      return res
-        .status(400)
-        .json({
-          error: `Jam praktik hanya tersedia antara ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
-        });
+      return res.status(400).json({
+        error: `Jam praktik hanya tersedia antara ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
+      });
     }
     const availableDoctors = await listAvailableDoctors(
       req.oauth2Client,
@@ -562,11 +532,9 @@ app.post("/api/bookings", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "Format email tidak valid." });
     const hour = parseHour(time);
     if (hour === null || hour < CLINIC_OPEN_HOUR || hour >= CLINIC_CLOSE_HOUR)
-      return res
-        .status(400)
-        .json({
-          error: `Jam praktik ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
-        });
+      return res.status(400).json({
+        error: `Jam praktik ${CLINIC_OPEN_HOUR}.00 - ${CLINIC_CLOSE_HOUR}.00.`,
+      });
     const doctor = doctors.find((d) => d.id === doctorId);
     if (!doctor)
       return res.status(404).json({ error: "Dokter tidak ditemukan." });
@@ -757,12 +725,9 @@ app.post("/api/bookings/cancel", requireAuth, async (req, res) => {
       !eventId &&
       (!eventIds || !Array.isArray(eventIds) || eventIds.length === 0)
     ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            'Field "eventId" (string) atau "eventIds" (array) wajib diisi.',
-        });
+      return res.status(400).json({
+        error: 'Field "eventId" (string) atau "eventIds" (array) wajib diisi.',
+      });
     }
     const idsToDelete = eventIds && eventIds.length > 0 ? eventIds : [eventId];
     const deletedIds = [];
@@ -794,7 +759,7 @@ app.post("/api/bookings/cancel", requireAuth, async (req, res) => {
   }
 });
 
-// ─── FALLBACK HANDLERS ────────────────────────────────────────────────────────
+// FALLBACK HANDLERS
 app.use((req, res) =>
   res.status(404).json({ error: "Endpoint tidak ditemukan." }),
 );
