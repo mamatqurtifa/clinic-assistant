@@ -371,6 +371,8 @@ app.get("/auth/token", (req, res) => {
   const { token } = req.query;
   if (!token) return res.redirect("/auth/login");
 
+  const masked = token.slice(0, 5) + '\u25cf'.repeat(Math.max(0, token.length - 5));
+
   res.send(`<!DOCTYPE html>
 <html lang="id">
 <head>
@@ -381,21 +383,11 @@ app.get("/auth/token", (req, res) => {
     body { margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #fff; font-family: sans-serif; }
     .box { width: 100%; max-width: 520px; padding: 32px; }
     h2 { font-size: 16px; margin: 0 0 12px; color: #111; font-weight: 600; }
-    .field { position: relative; }
     textarea {
       width: 100%; height: 96px; font-family: monospace; font-size: 13px;
       padding: 10px 12px; border: 1px solid #ccc; border-radius: 4px;
       resize: none; color: #111; background: #f5f5f5; box-sizing: border-box;
-      -webkit-text-security: disc;
     }
-    textarea.show { -webkit-text-security: none; }
-    .toggle {
-      position: absolute; top: 8px; right: 8px;
-      background: none; border: 1px solid #ccc; border-radius: 3px;
-      padding: 3px 8px; font-size: 11px; cursor: pointer; color: #555;
-      width: auto; margin: 0;
-    }
-    .toggle:active { background: #eee; }
     button {
       margin-top: 10px; width: 100%; padding: 11px;
       background: #111; color: #fff; border: none; border-radius: 4px;
@@ -408,25 +400,20 @@ app.get("/auth/token", (req, res) => {
 <body>
   <div class="box">
     <h2>Token</h2>
-    <div class="field">
-      <textarea id="t" readonly>${token}</textarea>
-      <button class="toggle" onclick="toggle()">Show</button>
-    </div>
+    <textarea readonly>${masked}</textarea>
     <button onclick="copy()">Copy</button>
     <p>Copy token ini dan paste di webchat.</p>
   </div>
   <script>
-    var visible = false;
-    function toggle() {
-      visible = !visible;
-      const t = document.getElementById('t');
-      t.classList.toggle('show', visible);
-      document.querySelector('.toggle').textContent = visible ? 'Hide' : 'Show';
-    }
+    var realToken = ${JSON.stringify(token)};
     function copy() {
-      const el = document.getElementById('t');
-      navigator.clipboard.writeText(el.value).catch(() => {
-        el.select(); document.execCommand('copy');
+      navigator.clipboard.writeText(realToken).catch(() => {
+        var t = document.createElement('textarea');
+        t.value = realToken;
+        document.body.appendChild(t);
+        t.select();
+        document.execCommand('copy');
+        document.body.removeChild(t);
       });
     }
   </script>
