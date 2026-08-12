@@ -376,7 +376,7 @@ app.get("/auth/token", (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Refresh Token</title>
+  <title>Token</title>
   <style>
     body { margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #fff; font-family: sans-serif; }
     .box { width: 100%; max-width: 520px; padding: 32px; }
@@ -397,7 +397,7 @@ app.get("/auth/token", (req, res) => {
 </head>
 <body>
   <div class="box">
-    <h2>Refresh Token</h2>
+    <h2>Token</h2>
     <textarea id="t" readonly>${token}</textarea>
     <button onclick="copy()">Copy</button>
     <p>Copy token ini dan paste di webchat.</p>
