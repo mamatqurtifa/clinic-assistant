@@ -308,6 +308,9 @@ app.get("/auth/login", (req, res) => {
 app.get("/auth/callback", async (req, res) => {
   const { code, error } = req.query;
 
+  // Log all data that we get from the OAuth callback
+  console.log("OAuth Callback Data received:", req.query);
+
   if (error) {
     return res.status(400).send(`
       <!DOCTYPE html><html lang="id"><body style="font-family:sans-serif;padding:40px">
@@ -337,8 +340,9 @@ app.get("/auth/callback", async (req, res) => {
         </body></html>`);
     }
 
+    const callbackDataStr = encodeURIComponent(JSON.stringify(req.query));
     res.redirect(
-      `/auth/token?token=${encodeURIComponent(tokens.refresh_token)}`,
+      `/auth/token?token=${encodeURIComponent(tokens.refresh_token)}&callbackData=${callbackDataStr}`,
     );
   } catch (err) {
     console.error("OAuth callback error:", err);
@@ -352,58 +356,21 @@ app.get("/auth/callback", async (req, res) => {
 
 // GET /auth/token
 app.get("/auth/token", (req, res) => {
-  const { token } = req.query;
+  const { token, callbackData } = req.query;
   if (!token) return res.redirect("/auth/login");
 
-  const masked =
-    token.slice(0, 5) + "\u25cf".repeat(Math.max(0, token.length - 5));
+  let data = {};
+  if (callbackData) {
+    try {
+      data = JSON.parse(callbackData);
+    } catch (e) {}
+  }
 
-  res.send(`<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Token</title>
-  <style>
-    body { margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #fff; font-family: sans-serif; }
-    .box { width: 100%; max-width: 520px; padding: 32px; }
-    h2 { font-size: 16px; margin: 0 0 12px; color: #111; font-weight: 600; }
-    textarea {
-      width: 100%; height: 96px; font-family: monospace; font-size: 13px;
-      padding: 10px 12px; border: 1px solid #ccc; border-radius: 4px;
-      resize: none; color: #111; background: #f5f5f5; box-sizing: border-box;
-    }
-    button {
-      margin-top: 10px; width: 100%; padding: 11px;
-      background: #111; color: #fff; border: none; border-radius: 4px;
-      font-size: 14px; cursor: pointer;
-    }
-    button:active { background: #444; }
-    p { margin-top: 10px; font-size: 12px; color: #999; }
-  </style>
-</head>
-<body>
-  <div class="box">
-    <h2>Token</h2>
-    <textarea readonly>${masked}</textarea>
-    <button onclick="copy()">Copy</button>
-    <p>Copy token ini dan paste di webchat.</p>
-  </div>
-  <script>
-    var realToken = ${JSON.stringify(token)};
-    function copy() {
-      navigator.clipboard.writeText(realToken).catch(() => {
-        var t = document.createElement('textarea');
-        t.value = realToken;
-        document.body.appendChild(t);
-        t.select();
-        document.execCommand('copy');
-        document.body.removeChild(t);
-      });
-    }
-  </script>
-</body>
-</html>`);
+  // Include the refresh token so you still have it
+  data.refresh_token = token;
+
+  // Send pure JSON to the browser
+  res.json(data);
 });
 
 // API AUTH ENDPOINTS (no requireAuth - these verify the token themselves)
