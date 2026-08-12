@@ -79,7 +79,6 @@ function generateAuthUrl() {
  * Extracts refresh_token from (in priority order):
  *   1. req.body.refresh_token
  *   2. Authorization: Bearer <token> header
- *   3. req.query.refresh_token (for GET requests)
  */
 function extractRefreshToken(req) {
   if (req.body && req.body.refresh_token)
@@ -87,8 +86,6 @@ function extractRefreshToken(req) {
   const authHeader = req.headers["authorization"];
   if (authHeader && authHeader.startsWith("Bearer "))
     return authHeader.slice(7).trim();
-  if (req.query && req.query.refresh_token)
-    return String(req.query.refresh_token).trim();
   return null;
 }
 
