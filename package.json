@@ -1,12 +1,11 @@
 {
   "name": "clinic-calendar-proxy",
-  "version": "1.0.0",
-  "description": "Proxy backend Express.js untuk booking konsultasi dokter via Google Calendar API (OAuth2 + refresh token, tanpa perlu login ulang di project utama)",
+  "version": "2.0.0",
+  "description": "Proxy backend Express.js untuk booking konsultasi dokter via Google Calendar API. Setiap user login dengan akun Google sendiri — refresh token disimpan di sisi klien, bukan di server.",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "node --watch index.js",
-    "oauth:login": "node oauth-login.js"
+    "dev": "node --watch index.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
