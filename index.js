@@ -2,33 +2,17 @@ require("dotenv").config();
 const express = require("express");
 const { google } = require("googleapis");
 const doctors = require("./doctors.json");
-const fs = require("fs");
-const path = require("path");
+const Redis = require("ioredis");
 
-// USER DATABASE UTILS
-const USERS_DB_PATH = path.join(__dirname, "users.json");
+// REDIS DATABASE UTILS
+const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
 
-function readUsersDb() {
-  if (!fs.existsSync(USERS_DB_PATH)) {
-    fs.writeFileSync(USERS_DB_PATH, JSON.stringify({}, null, 2));
-  }
-  try {
-    const data = fs.readFileSync(USERS_DB_PATH, "utf8");
-    return JSON.parse(data);
-  } catch (err) {
-    return {};
-  }
+async function saveUserToken(userId, token) {
+  await redis.set(userId, token);
 }
 
-function saveUserToken(userId, token) {
-  const users = readUsersDb();
-  users[userId] = token;
-  fs.writeFileSync(USERS_DB_PATH, JSON.stringify(users, null, 2));
-}
-
-function getUserToken(userId) {
-  const users = readUsersDb();
-  return users[userId] || null;
+async function getUserToken(userId) {
+  return await redis.get(userId);
 }
 
 // PORT & BASE URL (defined early - needed for OAUTH_REDIRECT_URI)
@@ -130,7 +114,7 @@ async function requireAuth(req, res, next) {
       });
   }
 
-  const refreshToken = getUserToken(userId);
+  const refreshToken = await getUserToken(userId);
   if (!refreshToken) {
     return res
       .status(401)
@@ -378,11 +362,11 @@ app.get("/auth/callback", async (req, res) => {
     const { tokens } = await client.getToken(code);
 
     if (tokens.refresh_token && state) {
-      saveUserToken(state, tokens.refresh_token);
+      await saveUserToken(state, tokens.refresh_token);
       console.log(`Successfully saved refresh_token for user: ${state}`);
     }
 
-    if (!tokens.refresh_token && !getUserToken(state)) {
+    if (!tokens.refresh_token && !(await getUserToken(state))) {
       return res.status(400).send(`
         <!DOCTYPE html><html lang="id"><body style="font-family:sans-serif;padding:40px">
           <h2>Refresh token tidak diterima</h2>
@@ -437,7 +421,7 @@ const handleAuthCheck = async (req, res) => {
     });
   }
 
-  const refreshToken = getUserToken(userId);
+  const refreshToken = await getUserToken(userId);
   if (!refreshToken) {
     return res.json({
       login_status: "failed",
@@ -470,7 +454,7 @@ const handleAuthEmail = async (req, res) => {
       });
   }
 
-  const refreshToken = getUserToken(userId);
+  const refreshToken = await getUserToken(userId);
   if (!refreshToken) {
     return res
       .status(401)
