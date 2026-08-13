@@ -5,7 +5,23 @@ const doctors = require("./doctors.json");
 const Redis = require("ioredis");
 
 // REDIS DATABASE UTILS
-const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379");
+const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
+  retryStrategy(times) {
+    if (times > 3) {
+      console.error("Gagal terhubung ke Redis setelah 3 percobaan. Pastikan REDIS_URL benar.");
+      return null; // Stop retrying
+    }
+    return Math.min(times * 100, 3000);
+  },
+});
+
+redis.on("error", (err) => {
+  console.error("Redis Error:", err.message);
+});
+
+redis.on("connect", () => {
+  console.log("Berhasil terhubung ke Redis!");
+});
 
 async function saveUserToken(userId, token) {
   await redis.set(userId, token);
