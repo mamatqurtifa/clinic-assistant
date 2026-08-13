@@ -2,6 +2,34 @@ require("dotenv").config();
 const express = require("express");
 const { google } = require("googleapis");
 const doctors = require("./doctors.json");
+const fs = require("fs");
+const path = require("path");
+
+// USER DATABASE UTILS
+const USERS_DB_PATH = path.join(__dirname, "users.json");
+
+function readUsersDb() {
+  if (!fs.existsSync(USERS_DB_PATH)) {
+    fs.writeFileSync(USERS_DB_PATH, JSON.stringify({}, null, 2));
+  }
+  try {
+    const data = fs.readFileSync(USERS_DB_PATH, "utf8");
+    return JSON.parse(data);
+  } catch (err) {
+    return {};
+  }
+}
+
+function saveUserToken(userId, token) {
+  const users = readUsersDb();
+  users[userId] = token;
+  fs.writeFileSync(USERS_DB_PATH, JSON.stringify(users, null, 2));
+}
+
+function getUserToken(userId) {
+  const users = readUsersDb();
+  return users[userId] || null;
+}
 
 // PORT & BASE URL (defined early - needed for OAUTH_REDIRECT_URI)
 const PORT = process.env.PORT || 3000;
@@ -9,6 +37,7 @@ const APP_BASE_URL = (
   process.env.APP_BASE_URL || `http://localhost:${PORT}`
 ).replace(/\/$/, "");
 const OAUTH_REDIRECT_URI = `${APP_BASE_URL}/auth/callback`;
+const FRONTEND_REDIRECT_URL = process.env.FRONTEND_REDIRECT_URL;
 
 // CLINIC CONFIG & TIME UTILS
 const CLINIC_OPEN_HOUR = 10;
@@ -67,20 +96,21 @@ function getOAuth2ClientWithToken(refreshToken) {
 }
 
 // Generates the Google OAuth login URL.
-function generateAuthUrl() {
+function generateAuthUrl(userId) {
   return getOAuth2ClientBase().generateAuthUrl({
     access_type: "offline",
     prompt: "consent",
     scope: OAUTH_SCOPES,
+    state: userId || undefined, // pass userId in state
   });
 }
 
-// Extracts refresh_token from (in priority order):
-//   1. req.body.refresh_token
-//   2. Authorization: Bearer <token> header
-function extractRefreshToken(req) {
-  if (req.body && req.body.refresh_token)
-    return String(req.body.refresh_token).trim();
+// Extracts userId from (in priority order):
+//   1. req.body.user_id or req.body.userId
+//   2. Authorization: Bearer <userId> header
+function extractUserId(req) {
+  if (req.body && req.body.user_id) return String(req.body.user_id).trim();
+  if (req.body && req.body.userId) return String(req.body.userId).trim();
   const authHeader = req.headers["authorization"];
   if (authHeader && authHeader.startsWith("Bearer "))
     return authHeader.slice(7).trim();
@@ -91,11 +121,20 @@ function extractRefreshToken(req) {
 // Returns 401 + login_url when token is missing or invalid.
 // Attaches req.oauth2Client when token is valid.
 async function requireAuth(req, res, next) {
-  const refreshToken = extractRefreshToken(req);
+  const userId = extractUserId(req);
+  if (!userId) {
+    return res
+      .status(401)
+      .json({
+        error: "Unauthorized. Please provide user_id in body or Bearer token.",
+      });
+  }
+
+  const refreshToken = getUserToken(userId);
   if (!refreshToken) {
     return res
       .status(401)
-      .json({ login_status: "failed", login_url: generateAuthUrl() });
+      .json({ login_status: "failed", login_url: generateAuthUrl(userId) });
   }
   try {
     const oauth2Client = getOAuth2ClientWithToken(refreshToken);
@@ -105,7 +144,7 @@ async function requireAuth(req, res, next) {
   } catch (err) {
     return res
       .status(401)
-      .json({ login_status: "failed", login_url: generateAuthUrl() });
+      .json({ login_status: "failed", login_url: generateAuthUrl(userId) });
   }
 }
 
@@ -298,7 +337,15 @@ app.get("/", (req, res) =>
 // GET /auth/login
 app.get("/auth/login", (req, res) => {
   try {
-    res.redirect(generateAuthUrl());
+    const userId = req.query.userId || req.query.user_id;
+    if (!userId) {
+      return res
+        .status(400)
+        .send(
+          "Parameter userId wajib disertakan. Contoh: /auth/login?userId=123",
+        );
+    }
+    res.redirect(generateAuthUrl(userId));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -330,26 +377,31 @@ app.get("/auth/callback", async (req, res) => {
     const client = getOAuth2ClientBase();
     const { tokens } = await client.getToken(code);
 
-    if (!tokens.refresh_token) {
+    if (tokens.refresh_token && state) {
+      saveUserToken(state, tokens.refresh_token);
+      console.log(`Successfully saved refresh_token for user: ${state}`);
+    }
+
+    if (!tokens.refresh_token && !getUserToken(state)) {
       return res.status(400).send(`
         <!DOCTYPE html><html lang="id"><body style="font-family:sans-serif;padding:40px">
           <h2>Refresh token tidak diterima</h2>
           <p>Kamu mungkin sudah pernah authorize sebelumnya. Cabut akses lama di
           <a href="https://myaccount.google.com/permissions" target="_blank">Google Account Permissions</a>
-          kemudian <a href="/auth/login">coba lagi</a>.</p>
+          kemudian <a href="/auth/login?userId=${encodeURIComponent(state)}">coba lagi</a>.</p>
         </body></html>`);
     }
 
-    const callbackDataStr = encodeURIComponent(JSON.stringify(req.query));
+    // Redirect user back to the chat application
     res.redirect(
-      `/auth/token?token=${encodeURIComponent(tokens.refresh_token)}&callbackData=${callbackDataStr}`,
+      `${FRONTEND_REDIRECT_URL}?calendar=success&userId=${encodeURIComponent(state)}`,
     );
   } catch (err) {
     console.error("OAuth callback error:", err);
     res.status(500).send(`
       <!DOCTYPE html><html lang="id"><body style="font-family:sans-serif;padding:40px">
         <h2>Gagal mendapatkan token</h2><p>${err.message}</p>
-        <a href="/auth/login">Coba lagi</a>
+        <a href="/auth/login?userId=${encodeURIComponent(state)}">Coba lagi</a>
       </body></html>`);
   }
 });
@@ -377,16 +429,30 @@ app.get("/auth/token", (req, res) => {
 
 // GET  /api/auth/check
 const handleAuthCheck = async (req, res) => {
-  const refreshToken = extractRefreshToken(req);
+  const userId = extractUserId(req);
+  if (!userId) {
+    return res.json({
+      login_status: "failed",
+      login_url: "Parameter user_id tidak ditemukan",
+    });
+  }
+
+  const refreshToken = getUserToken(userId);
   if (!refreshToken) {
-    return res.json({ login_status: "failed", login_url: generateAuthUrl() });
+    return res.json({
+      login_status: "failed",
+      login_url: generateAuthUrl(userId),
+    });
   }
   try {
     const oauth2Client = getOAuth2ClientWithToken(refreshToken);
     await oauth2Client.getAccessToken();
     return res.json({ login_status: "pass", login_url: "" });
   } catch (err) {
-    return res.json({ login_status: "failed", login_url: generateAuthUrl() });
+    return res.json({
+      login_status: "failed",
+      login_url: generateAuthUrl(userId),
+    });
   }
 };
 app.post("/api/auth/check", handleAuthCheck);
@@ -394,11 +460,21 @@ app.get("/api/auth/check", handleAuthCheck);
 
 // GET /api/auth/email
 const handleAuthEmail = async (req, res) => {
-  const refreshToken = extractRefreshToken(req);
+  const userId = extractUserId(req);
+  if (!userId) {
+    return res
+      .status(401)
+      .json({
+        login_status: "failed",
+        login_url: "Parameter user_id tidak ditemukan",
+      });
+  }
+
+  const refreshToken = getUserToken(userId);
   if (!refreshToken) {
     return res
       .status(401)
-      .json({ login_status: "failed", login_url: generateAuthUrl() });
+      .json({ login_status: "failed", login_url: generateAuthUrl(userId) });
   }
   try {
     const oauth2Client = getOAuth2ClientWithToken(refreshToken);
@@ -408,7 +484,7 @@ const handleAuthEmail = async (req, res) => {
   } catch (err) {
     return res
       .status(401)
-      .json({ login_status: "failed", login_url: generateAuthUrl() });
+      .json({ login_status: "failed", login_url: generateAuthUrl(userId) });
   }
 };
 app.post("/api/auth/email", handleAuthEmail);
