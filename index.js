@@ -8,20 +8,16 @@ const Redis = require("ioredis");
 const redis = new Redis(process.env.REDIS_URL || "redis://localhost:6379", {
   retryStrategy(times) {
     if (times > 3) {
-      console.error("Gagal terhubung ke Redis setelah 3 percobaan. Pastikan REDIS_URL benar.");
-      return null; // Stop retrying
+      console.error(
+        "Gagal terhubung ke Redis setelah 3 percobaan. Pastikan REDIS_URL benar.",
+      );
+      return null;
     }
     return Math.min(times * 100, 3000);
   },
 });
 
-redis.on("error", (err) => {
-  console.error("Redis Error:", err.message);
-});
 
-redis.on("connect", () => {
-  console.log("Berhasil terhubung ke Redis!");
-});
 
 async function saveUserToken(userId, token) {
   await redis.set(userId, token);
@@ -123,11 +119,9 @@ function extractUserId(req) {
 async function requireAuth(req, res, next) {
   const userId = extractUserId(req);
   if (!userId) {
-    return res
-      .status(401)
-      .json({
-        error: "Unauthorized. Please provide user_id in body or Bearer token.",
-      });
+    return res.status(401).json({
+      error: "Unauthorized. Please provide user_id in body or Bearer token.",
+    });
   }
 
   const refreshToken = await getUserToken(userId);
@@ -353,7 +347,7 @@ app.get("/auth/login", (req, res) => {
 
 // GET /auth/callback
 app.get("/auth/callback", async (req, res) => {
-  const { code, error } = req.query;
+  const { code, error, state } = req.query;
 
   // Log all data that we get from the OAuth callback
   console.log("OAuth Callback Data received:", req.query);
@@ -462,12 +456,10 @@ app.get("/api/auth/check", handleAuthCheck);
 const handleAuthEmail = async (req, res) => {
   const userId = extractUserId(req);
   if (!userId) {
-    return res
-      .status(401)
-      .json({
-        login_status: "failed",
-        login_url: "Parameter user_id tidak ditemukan",
-      });
+    return res.status(401).json({
+      login_status: "failed",
+      login_url: "Parameter user_id tidak ditemukan",
+    });
   }
 
   const refreshToken = await getUserToken(userId);
